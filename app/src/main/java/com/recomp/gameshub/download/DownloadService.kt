@@ -34,6 +34,21 @@ class DownloadService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        notifier.ensureChannels()
+        if (!startedForeground) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    PLACEHOLDER_NOTIFICATION_ID,
+                    placeholderNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
+                startedForeground = true
+            } catch (e: Exception) {
+                android.util.Log.e("DownloadService", "startForeground falhou no onCreate", e)
+                startedForeground = false
+            }
+        }
         engine.start(scope)
         collectorJob = scope.launch {
             repository.tasks.collect { tasks ->
@@ -64,6 +79,7 @@ class DownloadService : Service() {
                 )
                 startedForeground = true
             } catch (e: Exception) {
+                android.util.Log.e("DownloadService", "startForeground falhou no onStartCommand", e)
                 startedForeground = false
             }
         }
