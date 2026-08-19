@@ -61,7 +61,7 @@ class DownloadRepository(
             entity.toTask().copy(phase = phase)
         }
         _tasks.value = loaded.associateBy { it.id }
-        loaded.forEach { persist(it) }
+        loaded.forEach { persist(it.id) }
         onChanged?.invoke()
     }
 
