@@ -3,7 +3,6 @@ package com.recomp.gameshub.presentation.details
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,13 +68,11 @@ import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.core.util.formatBytes
 import com.recomp.gameshub.domain.model.GameDetail
 
-@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameDetailsScreen(
     slug: String,
     onClose: () -> Unit,
-    sharedElementScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
 ) {
     val viewModel: DetailsViewModel = appViewModel(key = "detail-$slug") {
         DetailsViewModel(
@@ -92,11 +89,6 @@ fun GameDetailsScreen(
     BackHandler(onBack = onClose)
 
     val hasDownloadUrl = uiState.detail?.downloadUrl?.isNotBlank() == true
-
-    val coverState = sharedElementScope.rememberSharedContentState("cover-$slug")
-    val coverModifier = with(sharedElementScope) {
-        Modifier.sharedElement(coverState, animatedVisibilityScope)
-    }
 
     Box(
         modifier = Modifier
@@ -135,8 +127,7 @@ fun GameDetailsScreen(
                             modifier = Modifier
                                 .offset(y = (-72).dp)
                                 .width(118.dp)
-                                .height(158.dp)
-                                .then(coverModifier),
+                                .height(158.dp),
                             shape = RoundedCornerShape(18.dp),
                             fallbackKey = slug.hashCode().toLong(),
                         )

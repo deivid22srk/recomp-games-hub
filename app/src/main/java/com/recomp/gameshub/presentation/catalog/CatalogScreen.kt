@@ -1,13 +1,9 @@
 package com.recomp.gameshub.presentation.catalog
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,13 +33,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +65,7 @@ import com.recomp.gameshub.domain.model.GameSummary
 import com.recomp.gameshub.presentation.details.GameDetailsScreen
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CatalogRoute(
     onOpenDownloads: () -> Unit,
@@ -97,12 +91,9 @@ fun CatalogRoute(
     val isShowingDetails = selectedSlug != null
 
     Box(modifier = Modifier.fillMaxSize()) {
-        SharedTransitionLayout {
-            val transitionScope = this
-
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
                     RecompBottomBar(
                         currentRoute = Routes.Catalog,
                         onNavigate = { route ->
@@ -120,7 +111,6 @@ fun CatalogRoute(
                     onQueryChange = viewModel::setQuery,
                     onFilterChange = viewModel::setFilter,
                     onOpenGame = viewModel::selectGame,
-                    sharedTransitionScope = transitionScope,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -138,17 +128,14 @@ fun CatalogRoute(
                         GameDetailsScreen(
                             slug = slug,
                             onClose = viewModel::clearSelection,
-                            sharedElementScope = transitionScope,
-                            animatedVisibilityScope = this,
                         )
                     }
                 }
             }
-        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CatalogContent(
     state: CatalogUiState,
@@ -156,31 +143,10 @@ private fun CatalogContent(
     onQueryChange: (String) -> Unit,
     onFilterChange: (GameStatus?) -> Unit,
     onOpenGame: (String) -> Unit,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-        LargeTopAppBar(
-            title = {
-                Column {
-                    Text(
-                        text = "Recomp Hub",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "Recompilações. Um só lugar.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.largeTopAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background,
-            ),
-            scrollBehavior = scrollBehavior,
-        )
+        CatalogHeader()
 
         SearchField(
             query = state.query,
@@ -226,18 +192,12 @@ private fun CatalogContent(
                 }
             }
             else -> {
-                val listVisibleState = remember {
-                    MutableTransitionState(false).apply { targetState = true }
-                }
-                with(sharedTransitionScope) {
-                    AnimatedVisibility(visibleState = listVisibleState) {
-                        val listScope = this
-                        PullToRefreshBox(
-                            isRefreshing = state.isRefreshing,
-                            onRefresh = onRefresh,
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            LazyVerticalGrid(
+                PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 150.dp),
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
@@ -251,39 +211,26 @@ private fun CatalogContent(
                             ) {
                                 items(state.games, key = { it.slug }) { game ->
                                     GameCardItem(
-                                        game = game,
-                                        onClick = { onOpenGame(game.slug) },
-                                        sharedTransitionScope = sharedTransitionScope,
-                                        animatedVisibilityScope = listScope,
-                                    )
+                                            game = game,
+                                            onClick = { onOpenGame(game.slug) },
+                                        )
+                                }
                                 }
                             }
                         }
-                    }
-                }
-            }
         }
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun GameCardItem(
     game: GameSummary,
     onClick: () -> Unit,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
 ) {
-    val transitionState = sharedTransitionScope.rememberSharedContentState("cover-${game.slug}")
-    val coverModifier = remember {
-        with(sharedTransitionScope) {
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(3f / 4f)
-                .sharedElement(transitionState, animatedVisibilityScope)
-        }
-    }
+    val coverModifier = Modifier
+        .fillMaxWidth()
+        .aspectRatio(3f / 4f)
 
     Column(
         modifier = modifier
@@ -329,7 +276,27 @@ private fun GameCardItem(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun CatalogHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 16.dp),
+    ) {
+        Text(
+            text = "Recomp Hub",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Recompilações. Um só lugar.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun GameGridSkeleton() {
     LazyVerticalGrid(
