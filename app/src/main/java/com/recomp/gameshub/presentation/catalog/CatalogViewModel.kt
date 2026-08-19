@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -44,19 +43,13 @@ class CatalogViewModel(
     private val _selectedSlug = MutableStateFlow<String?>(null)
     val selectedSlug = _selectedSlug.asStateFlow()
 
-    val counts: StateFlow<Map<GameStatus, Int>> = summaries
-        .map { list -> list.groupingBy { it.status }.eachCount() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-
     val uiState: StateFlow<CatalogUiState> = combine(
         summaries,
         _query,
         _filter,
         _isRefreshing,
         _error,
-        _hasLoadedOnce,
-        counts,
-    ) { list, q, filter, refreshing, error, loadedOnce, countsMap ->
+    ) { list, q, filter, refreshing, error ->
         val normalized = q.trim().lowercase()
         val filtered = list.filter { game ->
             (filter == null || game.status == filter) &&
@@ -66,10 +59,10 @@ class CatalogViewModel(
             games = filtered,
             query = q,
             filter = filter,
-            isLoading = !loadedOnce && list.isEmpty() && error == null,
+            isLoading = !_hasLoadedOnce.value && list.isEmpty() && error == null,
             isRefreshing = refreshing,
             error = error,
-            counts = countsMap,
+            counts = list.groupingBy { it.status }.eachCount(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CatalogUiState())
 

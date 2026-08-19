@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -77,7 +78,6 @@ class DownloadRepository(
         val file = File(downloadsDir, fileName)
         if (existing != null && existing.phase == DownloadPhase.COMPLETED) {
             file.delete()
-            dao.delete(slug)
         }
         val task = DownloadTask(
             id = slug,

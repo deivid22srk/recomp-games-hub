@@ -155,6 +155,7 @@ fun GameDetailsScreen(
                     onInstall = viewModel::install,
                     onDelete = { downloadTask?.let { viewModel.cancel() } },
                     downloadEnabled = hasDownloadUrl,
+                    modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
         }
@@ -543,13 +544,13 @@ private fun DetailBottomBar(
     onInstall: () -> Unit,
     onDelete: () -> Unit,
     downloadEnabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         tonalElevation = 3.dp,
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 14.dp),

@@ -17,20 +17,18 @@ object Routes {
 }
 
 @Composable
-fun <T : ViewModel> appViewModel(
-    containerCreator: (AppContainer) -> T,
+inline fun <reified T : ViewModel> appViewModel(
     key: String? = null,
+    noinline containerCreator: (AppContainer) -> T,
 ): T {
     val context = LocalContext.current
-    val container = context.applicationContext
-        .let { it as RecompApplication }
-        .container
-    val factory = remember(container, containerCreator) {
+    val container = (context.applicationContext as RecompApplication).container
+    val factory = remember(container) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <VM : ViewModel> create(modelClass: Class<VM>): VM =
                 containerCreator(container) as VM
         }
     }
-    return viewModel(key = key, factory = factory)
+    return viewModel<T>(key = key, factory = factory)
 }

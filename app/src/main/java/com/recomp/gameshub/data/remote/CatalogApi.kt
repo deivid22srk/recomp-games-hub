@@ -31,7 +31,7 @@ class CatalogApi(
     suspend fun fetchMetadata(slug: String): GameMetadataDto =
         getFromRaw("games/$slug/metadata.json") { body -> json.decodeFromString<GameMetadataDto>(body) }
 
-    private inline fun <T> getFromRaw(path: String, crossinline transform: (String) -> T): T =
+    private suspend fun <T> getFromRaw(path: String, transform: (String) -> T): T =
         withContext(Dispatchers.IO) {
             val request = Request.Builder().url(rawUrl(path)).build()
             client.newCall(request).execute().use { response ->

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -62,7 +63,7 @@ class DetailsViewModel(
             _error.value = null
             catalogRepository.ensureDetail(slug)
             _loading.value = false
-            val current = kotlinx.coroutines.flow.first(catalogRepository.observeDetail(slug))
+            val current = catalogRepository.observeDetail(slug).first()
             if (current == null) {
                 _error.value = "Não foi possível carregar os detalhes deste jogo."
             }

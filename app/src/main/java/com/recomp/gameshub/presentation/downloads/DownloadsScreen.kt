@@ -188,6 +188,7 @@ private fun ActiveDownloadItem(
         shape = MaterialTheme.shapes.large,
     ) {
         Row(modifier = Modifier.padding(14.dp)) {
+            val paused = task.phase == DownloadPhase.PAUSED
             CoverFallback(
                 key = task.id.hashCode().toLong(),
                 modifier = Modifier.size(56.dp),
@@ -202,7 +203,6 @@ private fun ActiveDownloadItem(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(6.dp))
-                val paused = task.phase == DownloadPhase.PAUSED
                 Text(
                     text = statusLine(task),
                     style = MaterialTheme.typography.bodySmall,

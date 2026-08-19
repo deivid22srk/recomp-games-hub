@@ -269,7 +269,7 @@ private fun GameCardItem(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
-                .sharedElement(transitionState)
+                .sharedElement(transitionState, animatedVisibilityScope = null)
         }
     }
 
