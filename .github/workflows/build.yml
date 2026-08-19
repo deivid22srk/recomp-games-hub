@@ -35,6 +35,12 @@ jobs:
         with:
           min-wrapper-count: 1
 
+      - name: Print resolved Compose versions
+        run: |
+          ./gradlew -q :app:dependencies --configuration debugCompileClasspath \
+            | grep -E "androidx.compose.(material3:material3|material:material-icons-extended|ui:ui):" \
+            || true
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 

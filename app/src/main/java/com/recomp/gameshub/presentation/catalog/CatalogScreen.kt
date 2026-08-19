@@ -1,7 +1,9 @@
 package com.recomp.gameshub.presentation.catalog
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.MutableTransitionState
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -224,29 +226,38 @@ private fun CatalogContent(
                 }
             }
             else -> {
-                PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
-                    onRefresh = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 150.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = 4.dp,
-                            bottom = 28.dp,
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                    ) {
-                        items(state.games, key = { it.slug }) { game ->
-                            GameCardItem(
-                                game = game,
-                                onClick = { onOpenGame(game.slug) },
-                                sharedTransitionScope = sharedTransitionScope,
-                            )
+                val listVisibleState = remember {
+                    MutableTransitionState(false).apply { targetState = true }
+                }
+                with(sharedTransitionScope) {
+                    AnimatedVisibility(visibleState = listVisibleState) {
+                        val listScope = this
+                        PullToRefreshBox(
+                            isRefreshing = state.isRefreshing,
+                            onRefresh = onRefresh,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(minSize = 150.dp),
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 4.dp,
+                                    bottom = 28.dp,
+                                ),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(20.dp),
+                            ) {
+                                items(state.games, key = { it.slug }) { game ->
+                                    GameCardItem(
+                                        game = game,
+                                        onClick = { onOpenGame(game.slug) },
+                                        sharedTransitionScope = sharedTransitionScope,
+                                        animatedVisibilityScope = listScope,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -261,6 +272,7 @@ private fun GameCardItem(
     game: GameSummary,
     onClick: () -> Unit,
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
 ) {
     val transitionState = sharedTransitionScope.rememberSharedContentState("cover-${game.slug}")
@@ -269,7 +281,7 @@ private fun GameCardItem(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
-                .sharedElement(transitionState, animatedVisibilityScope = null)
+                .sharedElement(transitionState, animatedVisibilityScope)
         }
     }
 

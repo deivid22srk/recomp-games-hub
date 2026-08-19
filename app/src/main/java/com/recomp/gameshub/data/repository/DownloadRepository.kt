@@ -187,7 +187,8 @@ class DownloadRepository(
         onChanged?.invoke()
     }
 
-    private fun persist(task: DownloadTask) {
+    private fun persist(id: String) {
+        val task = _tasks.value[id] ?: return
         appScope.launch(Dispatchers.IO) {
             if (task.phase == DownloadPhase.CANCELLED) {
                 dao.delete(task.id)

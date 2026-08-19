@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -38,11 +37,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallTopAppBar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -51,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.recomp.gameshub.core.designsystem.AppTopBar
 import com.recomp.gameshub.core.designsystem.CoverFallback
 import com.recomp.gameshub.core.designsystem.EmptyStateBox
 import com.recomp.gameshub.core.navigation.Routes
@@ -78,15 +76,9 @@ fun DownloadsRoute(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            SmallTopAppBar(
-                title = {
-                    Text("Downloads", style = MaterialTheme.typography.titleLarge)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Voltar")
-                    }
-                },
+            AppTopBar(
+                title = "Downloads",
+                onBack = onBack,
                 actions = {
                     if (uiState.finished.isNotEmpty() || uiState.active.isNotEmpty()) {
                         TextButton(onClick = viewModel::clearFinished) {
@@ -94,9 +86,6 @@ fun DownloadsRoute(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.smallTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
             )
         },
         bottomBar = {
