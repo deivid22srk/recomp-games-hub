@@ -33,10 +33,10 @@ class DownloadNotifier(private val context: Context) {
     }
 
     init {
-        createChannels()
+        ensureChannels()
     }
 
-    private fun createChannels() {
+    fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val active = NotificationChannel(

@@ -71,8 +71,13 @@ class DownloadService : Service() {
             val notification = notifier.activeNotification(task)
             val notifId = notificationId(task.id)
             if (first) {
-                startForeground(notifId, notification)
-                startedForeground = true
+                try {
+                    startForeground(notifId, notification)
+                    startedForeground = true
+                } catch (e: Exception) {
+                    startedForeground = false
+                    notifier.notify(notifId, notification)
+                }
                 first = false
             } else {
                 notifier.notify(notifId, notification)

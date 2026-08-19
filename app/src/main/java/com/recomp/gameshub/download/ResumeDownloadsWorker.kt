@@ -16,18 +16,24 @@ class ResumeDownloadsWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as RecompApplication
-        setForeground(
-            ForegroundInfo(
-                notificationId,
-                NotificationCompat.Builder(applicationContext, DownloadNotifier.CHANNEL_ACTIVE)
-                    .setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(applicationContext.getString(R.string.app_name))
-                    .setContentText("Preparando downloads…")
-                    .setOngoing(true)
-                    .build(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+        DownloadNotifier(applicationContext).ensureChannels()
+        try {
+            setForeground(
+                ForegroundInfo(
+                    notificationId,
+                    NotificationCompat.Builder(applicationContext, DownloadNotifier.CHANNEL_ACTIVE)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setContentTitle(applicationContext.getString(R.string.app_name))
+                        .setContentText("Preparando downloads…")
+                        .setOngoing(true)
+                        .build(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
             )
-        )
+        } catch (e: Exception) {
+            // Sem permissão de notificação/autoridade para startForeground:
+            // segue sem o serviço em primeiro plano.
+        }
 
         app.container.downloadRepository.restoreInterrupted()
         if (app.container.downloadRepository.hasPendingWork()) {
