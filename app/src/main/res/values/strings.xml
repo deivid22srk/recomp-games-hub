@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Recomp Hub</string>
+    <string name="app_name_full">Recomp Games Hub</string>
+    <string name="tagline">Recompilações. Um só lugar.</string>
+    <string name="search_hint">Buscar jogo…</string>
+    <string name="action_retry">Tentar novamente</string>
+    <string name="action_install">Instalar</string>
+    <string name="action_open">Abrir</string>
+    <string name="action_pause">Pausar</string>
+    <string name="action_resume">Retomar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_delete">Excluir</string>
+    <string name="action_back">Voltar</string>
+    <string name="downloads">Downloads</string>
+    <string name="settings">Configurações</string>
+    <string name="library">Catálogo</string>
+    <string name="empty_library">Nenhum jogo encontrado</string>
+    <string name="empty_library_msg">Ajuste a busca ou verifique sua conexão.</string>
+</resources>

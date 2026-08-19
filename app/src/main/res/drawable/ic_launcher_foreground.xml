@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Game controller silhouette -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36 C40,36 30,46 30,58 C30,66 34,72 42,72 L50,72 L54,64 L58,72 L66,72 C74,72 78,66 78,58 C78,46 68,36 54,36 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45,52 a3,3 0 1,0 0.001,0 Z M63,52 a3,3 0 1,0 0.001,0 Z" />
+</vector>
