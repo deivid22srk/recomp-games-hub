@@ -1,10 +1,15 @@
 package com.recomp.gameshub.download
 
+import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.recomp.gameshub.R
 import com.recomp.gameshub.RecompApplication
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
@@ -48,10 +53,33 @@ class DownloadService : Service() {
             DownloadNotifier.ACTION_CANCEL -> taskId?.let { repository.cancel(it) }
             else -> Unit
         }
+        notifier.ensureChannels()
+        if (!startedForeground) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    PLACEHOLDER_NOTIFICATION_ID,
+                    placeholderNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
+                startedForeground = true
+            } catch (e: Exception) {
+                startedForeground = false
+            }
+        }
         engine.start(scope)
         scope.launch { repository.tasks.first().let { refreshNotifications(it.filter { t -> t.phase.isActive }, emptyList()) } }
         return START_STICKY
     }
+
+    private fun placeholderNotification(): Notification =
+        NotificationCompat.Builder(this, DownloadNotifier.CHANNEL_ACTIVE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText("Preparando downloads…")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
 
     private suspend fun refreshNotifications(active: List<com.recomp.gameshub.domain.model.DownloadTask>, others: List<com.recomp.gameshub.domain.model.DownloadTask>) {
         if (active.isEmpty()) {
@@ -72,7 +100,12 @@ class DownloadService : Service() {
             val notifId = notificationId(task.id)
             if (first) {
                 try {
-                    startForeground(notifId, notification)
+                    ServiceCompat.startForeground(
+                        this,
+                        notifId,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                    )
                     startedForeground = true
                 } catch (e: Exception) {
                     startedForeground = false
@@ -109,6 +142,8 @@ class DownloadService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val PLACEHOLDER_NOTIFICATION_ID = 0x9001
+
         fun start(context: Context) {
             ContextCompat.startForegroundService(
                 context,
