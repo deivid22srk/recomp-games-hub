@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +61,7 @@ import com.recomp.gameshub.core.designsystem.ShimmerBox
 import com.recomp.gameshub.BuildConfig
 import com.recomp.gameshub.core.navigation.Routes
 import com.recomp.gameshub.core.navigation.RecompBottomBar
+import com.recomp.gameshub.core.designsystem.AppTopBar
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.domain.model.GameStatus
 import com.recomp.gameshub.domain.model.GameSummary
@@ -78,6 +80,7 @@ fun CatalogRoute(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedSlug by viewModel.selectedSlug.collectAsStateWithLifecycle()
+    var searchOpen by remember { mutableStateOf(false) }
 
     var displayedSlug by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedSlug) {
@@ -92,7 +95,16 @@ fun CatalogRoute(
     val isShowingDetails = selectedSlug != null
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
+        if (searchOpen) {
+            GameSearchScreen(
+                viewModel = viewModel,
+                onClose = {
+                    viewModel.clearSearch()
+                    searchOpen = false
+                },
+                onOpenGame = viewModel::selectGame,
+            )
+        } else Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                     RecompBottomBar(
@@ -109,9 +121,9 @@ fun CatalogRoute(
                 CatalogContent(
                     state = uiState,
                     onRefresh = { viewModel.refresh() },
-                    onQueryChange = viewModel::setQuery,
                     onFilterChange = viewModel::setFilter,
                     onOpenGame = viewModel::selectGame,
+                    onOpenSearch = { searchOpen = true },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -141,19 +153,13 @@ fun CatalogRoute(
 private fun CatalogContent(
     state: CatalogUiState,
     onRefresh: () -> Unit,
-    onQueryChange: (String) -> Unit,
     onFilterChange: (GameStatus?) -> Unit,
     onOpenGame: (String) -> Unit,
+    onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        CatalogHeader()
-
-        SearchField(
-            query = state.query,
-            onQueryChange = onQueryChange,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
+        CatalogHeader(onSearch = onOpenSearch)
 
         Spacer(Modifier.height(12.dp))
 
@@ -288,23 +294,88 @@ private fun resolveCatalogImage(slug: String, value: String?): String? {
 }
 
 @Composable
-private fun CatalogHeader() {
-    Column(
+private fun CatalogHeader(onSearch: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "Recomp Hub",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "Recompilações. Um só lugar.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Recomp Hub", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text("Recompilações. Um só lugar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onSearch) {
+            Icon(Icons.Rounded.Search, contentDescription = "Pesquisar jogos")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GameSearchScreen(
+    viewModel: CatalogViewModel,
+    onClose: () -> Unit,
+    onOpenGame: (String) -> Unit,
+) {
+    val results by viewModel.searchResults.collectAsStateWithLifecycle()
+    val query by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
+    val error by viewModel.searchError.collectAsStateWithLifecycle()
+    var input by remember(query) { mutableStateOf(query) }
+
+    Scaffold(
+        topBar = { AppTopBar(title = "Pesquisar jogos", onBack = onClose) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("Nome do jogo") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                )
+                Button(onClick = { viewModel.searchGames(input) }, enabled = input.trim().length >= 2) {
+                    Text("Buscar")
+                }
+            }
+            Text(
+                text = "Digite pelo menos 2 caracteres. A busca é feita no servidor.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            when {
+                isSearching -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    ErrorStateBox(message = error!!, onRetry = { viewModel.searchGames(input) })
+                }
+                query.trim().length >= 2 && results.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EmptyStateBox(title = "Nenhum jogo encontrado", message = "Tente pesquisar por outro nome.")
+                }
+                results.isNotEmpty() -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 150.dp),
+                    modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    items(results, key = { it.slug }) { game ->
+                        GameCardItem(game = game, onClick = { onOpenGame(game.slug) })
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -18,6 +18,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.net.URLEncoder
 
 class SupabaseApi(
     private val client: OkHttpClient,
@@ -161,14 +162,39 @@ class SupabaseApi(
      * Approved games with their screenshots embedded (game_id join).
      * Anonymous users see only `review_status = approved`.
      */
-    suspend fun fetchApprovedGames(): List<GameRow> =
+    suspend fun fetchApprovedGames(limit: Int? = null): List<GameRow> =
         selectRows(
             GAMES_TABLE,
             filter = "review_status=eq.$REVIEW_APPROVED",
             select = "id,slug,title,description,original_platform,status,version,author," +
                 "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
                 "review_status,created_at,updated_at,game_screenshots(image_url,sort_order)",
+            limit = limit,
+            order = "updated_at.desc",
         )
+
+    suspend fun searchApprovedGames(query: String, limit: Int = 30): List<GameRow> {
+        val encoded = URLEncoder.encode(query.trim(), Charsets.UTF_8.name()).replace("+", "%20")
+        return selectRows(
+            GAMES_TABLE,
+            filter = "review_status=eq.$REVIEW_APPROVED&title=ilike.*$encoded*",
+            select = "id,slug,title,description,original_platform,status,version,author," +
+                "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
+                "review_status,created_at,updated_at,game_screenshots(image_url,sort_order)",
+            limit = limit,
+            order = "title.asc",
+        )
+    }
+
+    suspend fun fetchApprovedGame(slug: String): GameRow? =
+        selectRows<GameRow>(
+            GAMES_TABLE,
+            filter = "review_status=eq.$REVIEW_APPROVED&slug=eq.${esc(slug)}",
+            select = "id,slug,title,description,original_platform,status,version,author," +
+                "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
+                "review_status,created_at,updated_at,game_screenshots(image_url,sort_order)",
+            limit = 1,
+        ).firstOrNull()
 
     suspend fun fetchMyGames(accessToken: String): List<GameRow> {
         val userId = fetchUser(accessToken).id
@@ -346,9 +372,16 @@ class SupabaseApi(
         filter: String,
         select: String = "*",
         token: String? = null,
+        limit: Int? = null,
+        order: String? = null,
     ): List<T> {
         val headers = postgrestHeaders(token, prefer = "return=representation")
-        val text = raw("GET", "/rest/v1/$table?$filter&select=$select", headers = headers)
+        val query = buildString {
+            append("$filter&select=$select")
+            limit?.let { append("&limit=$it") }
+            order?.let { append("&order=$it") }
+        }
+        val text = raw("GET", "/rest/v1/$table?$query", headers = headers)
         return try {
             val arr = json.decodeFromString<JsonArray>(text)
             arr.mapNotNull { row ->

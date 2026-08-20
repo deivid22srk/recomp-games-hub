@@ -32,7 +32,7 @@ class CatalogRepository(
     suspend fun refresh(): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             try {
-                val games = supabaseApi.fetchApprovedGames()
+                val games = supabaseApi.fetchApprovedGames(limit = 30)
                 if (games.isEmpty()) {
                     gameDao.clear()
                     return@runCatching 0
@@ -51,10 +51,17 @@ class CatalogRepository(
     suspend fun ensureDetail(slug: String) {
         val cached = gameDao.get(slug)
         if (cached == null || cached.fetchedAt == 0L) {
-            runCatching { supabaseApi.fetchApprovedGames().firstOrNull { it.slug == slug } }
+            runCatching { supabaseApi.fetchApprovedGame(slug) }
                 .getOrNull()?.let { row ->
                     gameDao.upsert(row.toEntity(fetchedAt = System.currentTimeMillis()))
                 }
+        }
+    }
+
+    suspend fun search(query: String): Result<List<GameSummary>> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (query.trim().length < 2) return@runCatching emptyList()
+            supabaseApi.searchApprovedGames(query).map { it.toEntity(0L).toSummary() }
         }
     }
 
