@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +75,7 @@ fun ContributionRoute(
     val successMessage by viewModel.successMessage.collectAsStateWithLifecycle()
     val isSubmitting by viewModel.isSubmitting.collectAsStateWithLifecycle()
     val formVisible by viewModel.formVisible.collectAsStateWithLifecycle()
+    var section by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(ContributionSection.HOME) }
     var editing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.recomp.gameshub.domain.model.GameSubmission?>(null) }
     var deleting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.recomp.gameshub.domain.model.GameSubmission?>(null) }
 
@@ -79,8 +83,15 @@ fun ContributionRoute(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             AppTopBar(
-                title = "Contribuir",
-                onBack = onBack,
+                title = when (section) {
+                    ContributionSection.HOME -> "Contribuir"
+                    ContributionSection.FORM -> "Enviar jogo"
+                    ContributionSection.SUBMISSIONS -> "Minhas contribuições"
+                },
+                onBack = {
+                    if (section == ContributionSection.HOME) onBack()
+                    else { section = ContributionSection.HOME; viewModel.toggleForm(false) }
+                },
             )
         },
     ) { innerPadding ->
@@ -158,36 +169,6 @@ fun ContributionRoute(
                     }
                 }
 
-                if (isAdmin) {
-                    item {
-                        Button(
-                            onClick = onOpenAdminReview,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large,
-                        ) {
-                            Icon(Icons.Rounded.Gamepad, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.size(8.dp))
-                            Text("Revisar contribuições pendentes")
-                        }
-                    }
-                }
-
-                item {
-                    Button(
-                        onClick = { editing = null; viewModel.toggleForm(true) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large,
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(8.dp))
-                        Text("Enviar um jogo")
-                    }
-                }
-
-                item {
-                    Spacer(Modifier.height(8.dp))
-                }
-
                 successMessage?.let { msg ->
                     item {
                         InfoBanner(msg, isError = false)
@@ -199,7 +180,37 @@ fun ContributionRoute(
                     }
                 }
 
-                if (formVisible) {
+                if (section == ContributionSection.HOME) {
+                    item {
+                        ContributionActionCard(
+                            icon = Icons.Rounded.Add,
+                            title = "Enviar um jogo",
+                            message = "Cadastre uma recompilação usando o repositório e os dados da release.",
+                            actionLabel = "Começar",
+                            onClick = { editing = null; section = ContributionSection.FORM; viewModel.toggleForm(true) },
+                        )
+                    }
+                    item {
+                        ContributionActionCard(
+                            icon = Icons.Rounded.ListAlt,
+                            title = "Minhas contribuições",
+                            message = "Acompanhe status, edite dados ou exclua uma contribuição.",
+                            actionLabel = "Ver contribuições",
+                            onClick = { section = ContributionSection.SUBMISSIONS },
+                        )
+                    }
+                    if (isAdmin) {
+                        item {
+                            ContributionActionCard(
+                                icon = Icons.Rounded.Gamepad,
+                                title = "Área administrativa",
+                                message = "Revise, edite e gerencie todas as contribuições da comunidade.",
+                                actionLabel = "Abrir administração",
+                                onClick = onOpenAdminReview,
+                            )
+                        }
+                    }
+                } else if (section == ContributionSection.FORM) {
                     item {
                         GameSubmissionForm(
                             initial = editing,
@@ -212,38 +223,30 @@ fun ContributionRoute(
                             onCancel = { editing = null; viewModel.toggleForm(false) },
                         )
                     }
-                }
-
-                item {
-                    SectionHeader("Minhas contribuições", Modifier.padding(top = 12.dp))
-                }
-                if (isLoadingSubmissions) {
-                    item {
-                        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                            }
-                        }
-                    }
-                } else if (submissions.isEmpty()) {
-                    item {
-                        EmptyStateBox(
-                            title = "Nada por aqui ainda",
-                            message = "Quando você enviar jogos, eles vão aparecer aqui com o status da revisão.",
-                            icon = Icons.Rounded.Gamepad,
-                        )
-                    }
                 } else {
-                    submissions.forEach { submission ->
-                        item(key = submission.slug) {
-                            SubmissionCard(
-                                submission = submission,
-                                onEdit = { editing = submission; viewModel.toggleForm(true) },
-                                onDelete = { deleting = submission },
+                    item {
+                        if (isLoadingSubmissions) {
+                            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+                                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        } else if (submissions.isEmpty()) {
+                            EmptyStateBox(
+                                title = "Nada por aqui ainda",
+                                message = "Quando você enviar jogos, eles aparecerão aqui com o status da revisão.",
+                                icon = Icons.Rounded.Gamepad,
                             )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                submissions.forEach { submission ->
+                                    SubmissionCard(
+                                        submission = submission,
+                                        onEdit = { editing = submission; section = ContributionSection.FORM; viewModel.toggleForm(true) },
+                                        onDelete = { deleting = submission },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -251,6 +254,10 @@ fun ContributionRoute(
 
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    LaunchedEffect(formVisible) {
+        if (!formVisible && section == ContributionSection.FORM) section = ContributionSection.HOME
     }
 
     deleting?.let { submission ->
@@ -263,6 +270,32 @@ fun ContributionRoute(
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
         )
+    }
+}
+
+private enum class ContributionSection { HOME, FORM, SUBMISSIONS }
+
+@Composable
+private fun ContributionActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    message: String,
+    actionLabel: String,
+    onClick: () -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(12.dp).size(24.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(3.dp))
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = onClick) { Text(actionLabel) }
+        }
     }
 }
 
