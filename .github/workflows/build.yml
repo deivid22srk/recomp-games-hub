@@ -43,6 +43,17 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Verify backend configured
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK: $APK"
+          unzip -p "$APK" classes.dex | grep -aq "supabase.co" \
+            && echo "OK: Supabase URL embutido no APK" \
+            || (echo "FALHOU: backend não configurado"; exit 1)
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
