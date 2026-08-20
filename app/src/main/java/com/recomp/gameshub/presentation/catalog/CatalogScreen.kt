@@ -57,6 +57,7 @@ import com.recomp.gameshub.core.designsystem.ErrorStateBox
 import com.recomp.gameshub.core.designsystem.GameCoverImage
 import com.recomp.gameshub.core.designsystem.RecompStatusBadge
 import com.recomp.gameshub.core.designsystem.ShimmerBox
+import com.recomp.gameshub.BuildConfig
 import com.recomp.gameshub.core.navigation.Routes
 import com.recomp.gameshub.core.navigation.RecompBottomBar
 import com.recomp.gameshub.core.navigation.appViewModel
@@ -239,7 +240,7 @@ private fun GameCardItem(
             .clickable(onClick = onClick),
     ) {
         GameCoverImage(
-            url = game.cover,
+            url = resolveCatalogImage(game.slug, game.cover),
             contentDescription = game.name,
             modifier = coverModifier,
             shape = RoundedCornerShape(20.dp),
@@ -274,6 +275,16 @@ private fun GameCardItem(
             }
         }
     }
+}
+
+private fun resolveCatalogImage(slug: String, value: String?): String? {
+    if (value.isNullOrBlank()) return null
+    val githubBlob = Regex("https?://github\\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)").matchEntire(value)
+    if (githubBlob != null) {
+        return "https://raw.githubusercontent.com/${githubBlob.groupValues[1]}/${githubBlob.groupValues[2]}/${githubBlob.groupValues[3]}/${githubBlob.groupValues[4]}"
+    }
+    if (value.startsWith("http://") || value.startsWith("https://")) return value
+    return "https://raw.githubusercontent.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}/${BuildConfig.DATA_BRANCH}/games/$slug/$value"
 }
 
 @Composable

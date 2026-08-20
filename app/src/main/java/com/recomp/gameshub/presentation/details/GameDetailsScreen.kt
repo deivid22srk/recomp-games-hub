@@ -320,6 +320,7 @@ private fun DetailContent(
         Text(
             text = detail.summary.name,
             style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -484,6 +485,7 @@ private fun InfoRow(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -250,6 +250,7 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.padding(horizontal = 20.dp),
     )
 }

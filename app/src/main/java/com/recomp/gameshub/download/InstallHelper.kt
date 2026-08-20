@@ -36,11 +36,12 @@ object InstallHelper {
         } catch (e: IllegalArgumentException) {
             Uri.fromFile(file)
         }
-        return Intent(Intent.ACTION_VIEW).apply {
+        return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             data = uri
             type = "application/vnd.android.package-archive"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_RETURN_RESULT, false)
         }
     }
 

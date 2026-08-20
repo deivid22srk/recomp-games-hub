@@ -29,7 +29,13 @@ class DownloadEngine(
     private val maxConcurrent = 2
 
     fun start(scope: CoroutineScope) {
-        if (this.scope === scope) return
+        if (this.scope === scope) {
+            // The service can already be alive when a new task is enqueued. In that
+            // case the callback is already bound, but the first drive may have run
+            // before the repository StateFlow delivered the task.
+            drive()
+            return
+        }
         this.scope = scope
         repository.bindOnChanged { drive() }
         drive()
