@@ -14,6 +14,15 @@ android {
     namespace = "com.recomp.gameshub"
     compileSdk = 35
 
+    signingConfigs {
+        create("debug") {
+            storeFile = rootProject.file("keystore/recomp-hub-debug.keystore")
+            storePassword = "recomp123"
+            keyAlias = "recomphub"
+            keyPassword = "recomp123"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.recomp.gameshub"
         minSdk = 26
@@ -29,6 +38,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
