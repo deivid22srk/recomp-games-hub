@@ -29,6 +29,9 @@ class ContributionViewModel(
     private val _isLoadingSubmissions = MutableStateFlow(false)
     val isLoadingSubmissions: StateFlow<Boolean> = _isLoadingSubmissions.asStateFlow()
 
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError: StateFlow<String?> = _loadError.asStateFlow()
+
     private val _isAuthenticating = MutableStateFlow(false)
     val isAuthenticating: StateFlow<Boolean> = _isAuthenticating.asStateFlow()
 
@@ -58,6 +61,7 @@ class ContributionViewModel(
                 } else {
                     _submissions.value = emptyList()
                     _isAdmin.value = false
+                    _loadError.value = null
                 }
             }
         }
@@ -119,6 +123,11 @@ class ContributionViewModel(
             _submitError.value = null
             _successMessage.value = null
         }
+    }
+
+    fun dismissMessage() {
+        _submitError.value = null
+        _successMessage.value = null
     }
 
     fun updateForm(
@@ -240,10 +249,24 @@ class ContributionViewModel(
         viewModelScope.launch {
             _isLoadingSubmissions.value = true
             contributionRepository.mySubmissions()
-                .onSuccess { _submissions.value = it }
-                .onFailure { /* silent: keep showing what we have */ }
+                .onSuccess {
+                    if (_authState.value is AuthState.SignedIn) {
+                        _submissions.value = it
+                        _loadError.value = null
+                    }
+                }
+                .onFailure {
+                    if (_authState.value is AuthState.SignedIn) {
+                        _loadError.value = it.message ?: "Não foi possível carregar suas contribuições."
+                    }
+                }
             _isLoadingSubmissions.value = false
         }
+    }
+
+    fun retrySubmissions() {
+        if (_isLoadingSubmissions.value) return
+        loadSubmissions()
     }
 
     private fun String.toDevStatus(): String =
