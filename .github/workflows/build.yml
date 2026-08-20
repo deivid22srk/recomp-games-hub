@@ -51,9 +51,12 @@ jobs:
         run: |
           APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
           echo "APK: $APK"
-          unzip -p "$APK" classes.dex | grep -aq "supabase.co" \
-            && echo "OK: Supabase URL embutido no APK" \
-            || (echo "FALHOU: backend não configurado"; exit 1)
+          if unzip -p "$APK" "classes*.dex" | grep -aq "supabase.co"; then
+            echo "OK: Supabase URL embutido no APK"
+          else
+            echo "FALHOU: backend não configurado"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
