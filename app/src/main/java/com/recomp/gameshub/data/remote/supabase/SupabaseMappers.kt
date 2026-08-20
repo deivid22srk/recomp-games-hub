@@ -46,6 +46,10 @@ fun GameRow.toSubmission(): GameSubmission =
         tags = tags,
         coverUrl = coverUrl,
         bannerUrl = bannerUrl,
+        screenshots = screenshots.orEmpty()
+            .sortedBy { it.sortOrder }
+            .map { it.imageUrl }
+            .filter { it.isNotBlank() },
         reviewReason = reviewReason,
         submittedAt = createdAt,
     )
