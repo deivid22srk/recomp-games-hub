@@ -134,6 +134,8 @@ fun ContributionRoute(
     var editing by remember { mutableStateOf<GameSubmission?>(null) }
     var deleting by remember { mutableStateOf<GameSubmission?>(null) }
 
+    val user = (authState as? AuthState.SignedIn)?.user
+
     val bannerMessage = successMessage ?: if (section == ContributionSection.FORM) null else submitError
     val isBannerError = submitError != null && section != ContributionSection.FORM
 
@@ -167,8 +169,6 @@ fun ContributionRoute(
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val user = (authState as? AuthState.SignedIn)?.user
-
             item {
                 ContributionHero(
                     signedIn = user != null,
