@@ -44,6 +44,10 @@
             tools:node="merge" />
 
         <receiver
+            android:name=".download.InstallStatusReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".download.BootReceiver"
             android:enabled="true"
             android:exported="true">

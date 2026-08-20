@@ -1,13 +1,18 @@
 package com.recomp.gameshub.download
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
+import java.io.FileInputStream
 
 object InstallHelper {
 
@@ -29,62 +34,40 @@ object InstallHelper {
         context.startActivity(intent)
     }
 
-    fun installIntent(context: Context, file: File): Intent {
-        val authority = "${context.packageName}.fileprovider"
-        val uri: Uri = try {
-            FileProvider.getUriForFile(context, authority, file)
-        } catch (e: IllegalArgumentException) {
-            Uri.fromFile(file)
-        }
-        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            data = uri
-            type = "application/vnd.android.package-archive"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        if (context.packageManager.resolveActivity(installIntent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
-            return installIntent
-        }
-
-        // Some Android builds do not register ACTION_INSTALL_PACKAGE. Their
-        // system installer still handles ACTION_VIEW, so target that activity
-        // explicitly to avoid the generic "Open with" chooser.
-        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-            data = uri
-            type = "application/vnd.android.package-archive"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val installer = context.packageManager
-            .queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .firstOrNull { info ->
-                val name = info.activityInfo.packageName.lowercase()
-                "packageinstaller" in name || "permissioncontroller" in name
-            }
-            ?: context.packageManager
-                .queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                .firstOrNull()
-        return if (installer != null) {
-            viewIntent.setPackage(installer.activityInfo.packageName)
-        } else {
-            viewIntent
-        }
-    }
-
-    @Suppress("DEPRECATION")
     fun installPackage(context: Context, file: File) {
         if (!canRequestInstalls(context)) {
             openInstallPermissionSettings(context)
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            context.startActivity(installIntent(context, file))
-        } else {
-            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                data = Uri.fromFile(file)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val installer = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                setSize(file.length())
+                setInstallReason(PackageManager.INSTALL_REASON_USER)
             }
-            context.startActivity(intent)
+            val sessionId = installer.createSession(params)
+            try {
+                installer.openSession(sessionId).use { session ->
+                    FileInputStream(file).use { input ->
+                        session.openWrite("base.apk", 0, file.length()).use { output ->
+                            input.copyTo(output)
+                            output.fsync()
+                        }
+                    }
+                    val callback = Intent(context, InstallStatusReceiver::class.java).apply {
+                        putExtra(InstallStatusReceiver.EXTRA_SESSION_ID, sessionId)
+                    }
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                    val status = PendingIntent.getBroadcast(context, sessionId, callback, flags)
+                    session.commit(status.intentSender)
+                }
+            } catch (error: Exception) {
+                runCatching { installer.abandonSession(sessionId) }
+                android.util.Log.e("InstallHelper", "Falha ao preparar instalação", error)
+            }
         }
     }
 }
