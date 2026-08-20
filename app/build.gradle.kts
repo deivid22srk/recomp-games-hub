@@ -22,7 +22,7 @@ android {
     compileSdk = 35
 
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = rootProject.file("keystore/recomp-hub-debug.keystore")
             storePassword = "recomp123"
             keyAlias = "recomphub"
