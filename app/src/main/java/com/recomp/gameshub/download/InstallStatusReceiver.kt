@@ -5,12 +5,37 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
+import com.recomp.gameshub.RecompApplication
+import com.recomp.gameshub.data.repository.InstalledGamesRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 class InstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         intent.getStringExtra(EXTRA_INSTALL_PATH)?.let { path ->
-            InstallHelper.installPackage(context, File(path))
+            val file = File(path)
+            val slug = intent.getStringExtra(EXTRA_SLUG)
+            if (slug != null && slug.isNotBlank() && file.exists()) {
+                val repo = (context.applicationContext as? RecompApplication)?.container?.installedGamesRepository
+                if (repo != null) {
+                    val result = goAsync()
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val identity = InstallHelper.readApkIdentity(context, file)
+                        if (identity != null) {
+                            repo.remember(
+                                slug = slug,
+                                packageName = identity.packageName,
+                                versionName = identity.versionName,
+                                versionCode = identity.versionCode,
+                            )
+                        }
+                        result.finish()
+                    }
+                }
+            }
+            InstallHelper.installPackage(context, file)
             return
         }
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
@@ -36,5 +61,6 @@ class InstallStatusReceiver : BroadcastReceiver() {
     companion object {
         const val EXTRA_SESSION_ID = "extra_session_id"
         const val EXTRA_INSTALL_PATH = "extra_install_path"
+        const val EXTRA_SLUG = "extra_slug"
     }
 }

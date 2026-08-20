@@ -69,7 +69,7 @@ fun DownloadsRoute(
     onOpenSettings: () -> Unit,
 ) {
     val viewModel: DownloadsViewModel = appViewModel {
-        DownloadsViewModel(it.downloadRepository, it.appContext)
+        DownloadsViewModel(it.downloadRepository, it.installedGamesRepository, it.appContext)
     }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 

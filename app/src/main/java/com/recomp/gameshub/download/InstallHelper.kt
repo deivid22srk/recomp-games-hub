@@ -14,7 +14,66 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
 
+data class ApkIdentity(
+    val packageName: String,
+    val versionName: String?,
+    val versionCode: Long,
+)
+
+data class InstalledPackageInfo(
+    val versionName: String?,
+    val versionCode: Long,
+)
+
 object InstallHelper {
+
+    fun readApkIdentity(context: Context, file: File): ApkIdentity? {
+        val pm = context.packageManager
+        @Suppress("DEPRECATION")
+        val info = pm.getPackageArchiveInfo(file.absolutePath, 0) ?: return null
+        val packageName = info.packageName ?: return null
+        return ApkIdentity(
+            packageName = packageName,
+            versionName = info.versionName,
+            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                info.versionCode.toLong()
+            },
+        )
+    }
+
+    fun installedPackageInfo(context: Context, packageName: String): InstalledPackageInfo? {
+        val pm = context.packageManager
+        val info = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(packageName, 0)
+            }
+        } catch (_: PackageManager.NameNotFoundException) {
+            return null
+        }
+        return InstalledPackageInfo(
+            versionName = info.versionName,
+            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                info.versionCode.toLong()
+            },
+        )
+    }
+
+    fun launchPackageOpt(context: Context, packageName: String) {
+        val pm = context.packageManager
+        val launchIntent = pm.getLaunchIntentForPackage(packageName)
+        val intent = (launchIntent ?: Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            setPackage(packageName)
+        }).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+    }
 
     fun canRequestInstalls(context: Context): Boolean {
         val pm = context.packageManager

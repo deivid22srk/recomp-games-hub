@@ -28,14 +28,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
@@ -59,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.recomp.gameshub.BuildConfig
 import com.recomp.gameshub.core.designsystem.DownloadControl
@@ -70,6 +75,7 @@ import com.recomp.gameshub.core.designsystem.ShimmerBox
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.core.util.formatBytes
 import com.recomp.gameshub.domain.model.GameDetail
+import com.recomp.gameshub.domain.model.GameInstallState
 import com.recomp.gameshub.data.remote.GithubRelease
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,6 +88,7 @@ fun GameDetailsScreen(
         DetailsViewModel(
             catalogRepository = it.catalogRepository,
             downloadRepository = it.downloadRepository,
+            installedGamesRepository = it.installedGamesRepository,
             context = it.appContext,
             slug = slug,
             githubReleaseApi = it.githubReleaseApi,
@@ -91,9 +98,15 @@ fun GameDetailsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadTask by viewModel.downloadTask.collectAsStateWithLifecycle()
     val releases by viewModel.releases.collectAsStateWithLifecycle()
+    val installState by viewModel.installState.collectAsStateWithLifecycle()
     var showReleasePicker by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     BackHandler(onBack = onClose)
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshInstallState()
+        onPauseOrDispose { }
+    }
 
     val hasDownloadUrl = uiState.detail?.downloadUrl?.isNotBlank() == true || releases.isNotEmpty()
 
@@ -121,7 +134,7 @@ fun GameDetailsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(bottom = 132.dp),
+                        .padding(bottom = 176.dp),
                 ) {
                     HeroBanner(detail = detail, onClose = onClose, slug = slug)
                     Box(
@@ -140,11 +153,12 @@ fun GameDetailsScreen(
                         )
                     }
                     Spacer(Modifier.height(60.dp))
-                    DetailContent(detail = detail, onShare = viewModel::share, onOpenSource = viewModel::openSource)
+                    DetailContent(detail = detail, onShare = viewModel::share, onOpenSource = viewModel::openSource, installState = installState)
                 }
 
                 DetailBottomBar(
                     task = downloadTask,
+                    installState = installState,
                     onStart = { if (releases.size > 1) showReleasePicker = true else viewModel.startDownload(releases.firstOrNull()?.apk?.downloadUrl) },
                     onPause = viewModel::pause,
                     onResume = viewModel::resume,
@@ -152,6 +166,7 @@ fun GameDetailsScreen(
                     onRetry = viewModel::retry,
                     onInstall = viewModel::install,
                     onDelete = { downloadTask?.let { viewModel.cancel() } },
+                    onOpenGame = viewModel::openGame,
                     downloadEnabled = hasDownloadUrl,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
@@ -299,6 +314,7 @@ private fun DetailContent(
     detail: GameDetail,
     onShare: () -> Unit,
     onOpenSource: () -> Unit,
+    installState: GameInstallState = GameInstallState.Unknown,
 ) {
     val context = LocalContext.current
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -405,6 +421,11 @@ private fun DetailContent(
                         value = detail.summary.version,
                     )
                 }
+                InfoRow(
+                    icon = Icons.Rounded.Android,
+                    label = "Instalação",
+                    value = installationLabel(installState),
+                )
                 if (!detail.sourceRepo.isNullOrBlank()) {
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -571,6 +592,7 @@ private fun DetailsSkeleton() {
 @Composable
 private fun DetailBottomBar(
     task: com.recomp.gameshub.domain.model.DownloadTask?,
+    installState: GameInstallState,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -578,6 +600,7 @@ private fun DetailBottomBar(
     onRetry: () -> Unit,
     onInstall: () -> Unit,
     onDelete: () -> Unit,
+    onOpenGame: () -> Unit,
     downloadEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -590,16 +613,176 @@ private fun DetailBottomBar(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 14.dp),
     ) {
-        DownloadControl(
-            task = task,
-            onStart = onStart,
-            onPause = onPause,
-            onResume = onResume,
-            onCancel = onCancel,
-            onRetry = onRetry,
-            onInstall = onInstall,
-            onDelete = onDelete,
-            downloadEnabled = downloadEnabled,
-        )
+        if (task != null) {
+            DownloadControl(
+                task = task,
+                onStart = onStart,
+                onPause = onPause,
+                onResume = onResume,
+                onCancel = onCancel,
+                onRetry = onRetry,
+                onInstall = onInstall,
+                onDelete = onDelete,
+                downloadEnabled = downloadEnabled,
+            )
+        } else {
+            when (val state = installState) {
+                is GameInstallState.Installed -> {
+                    if (state.isUpToDate) {
+                        InstalledStatusBar(state = state, onOpenGame = onOpenGame)
+                    } else {
+                        UpdateStatusBar(state = state, onUpdate = onStart, onOpenGame = onOpenGame)
+                    }
+                }
+                else -> DownloadControl(
+                    task = null,
+                    onStart = onStart,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onCancel = onCancel,
+                    onRetry = onRetry,
+                    onInstall = onInstall,
+                    onDelete = onDelete,
+                    downloadEnabled = downloadEnabled,
+                )
+            }
+        }
     }
 }
+
+@Composable
+private fun InstalledStatusBar(
+    state: GameInstallState.Installed,
+    onOpenGame: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Column {
+                    Text(
+                        text = "Instalado",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "v${state.displayVersion} · atualizado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Button(
+            onClick = onOpenGame,
+            modifier = Modifier.height(52.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("Abrir")
+        }
+    }
+}
+
+@Composable
+private fun UpdateStatusBar(
+    state: GameInstallState.Installed,
+    onUpdate: () -> Unit,
+    onOpenGame: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Column {
+                    Text(
+                        text = "Atualização disponível",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    val latest = state.latestVersion
+                    Text(
+                        text = buildString {
+                            append("Instalada v${state.displayVersion}")
+                            if (!latest.isNullOrBlank()) {
+                                append("  →  v${latest.removePrefix("v").removePrefix("V")}")
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = onUpdate,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Atualizar")
+            }
+            FilledTonalButton(
+                onClick = onOpenGame,
+                modifier = Modifier.height(52.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text("Abrir")
+            }
+        }
+    }
+}
+
+@Composable
+private fun installationLabel(installState: GameInstallState): String =
+    when (installState) {
+        is GameInstallState.Installed ->
+            buildString {
+                append("Instalado · v${installState.displayVersion}")
+                if (!installState.isUpToDate) append(" · atualização disponível")
+            }
+        is GameInstallState.NotInstalled, GameInstallState.Unknown -> "Não instalado"
+    }

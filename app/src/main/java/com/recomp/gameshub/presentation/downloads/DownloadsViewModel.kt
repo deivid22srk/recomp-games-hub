@@ -3,6 +3,7 @@ package com.recomp.gameshub.presentation.downloads
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.recomp.gameshub.data.repository.DownloadRepository
+import com.recomp.gameshub.data.repository.InstalledGamesRepository
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.download.DownloadService
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import java.io.File
 
 data class DownloadsUiState(
@@ -21,6 +23,7 @@ data class DownloadsUiState(
 
 class DownloadsViewModel(
     private val downloadRepository: DownloadRepository,
+    private val installedGamesRepository: InstalledGamesRepository,
     private val context: Context,
 ) : ViewModel() {
 
@@ -52,10 +55,21 @@ class DownloadsViewModel(
     fun install(task: DownloadTask) {
         val file = File(task.localPath)
         if (!file.exists()) return
-        if (InstallHelper.canRequestInstalls(context)) {
-            InstallHelper.installPackage(context, file)
-        } else {
-            InstallHelper.openInstallPermissionSettings(context)
+        viewModelScope.launch {
+            val identity = InstallHelper.readApkIdentity(context, file)
+            if (identity != null && task.id.isNotBlank()) {
+                installedGamesRepository.remember(
+                    slug = task.id,
+                    packageName = identity.packageName,
+                    versionName = identity.versionName,
+                    versionCode = identity.versionCode,
+                )
+            }
+            if (InstallHelper.canRequestInstalls(context)) {
+                InstallHelper.installPackage(context, file)
+            } else {
+                InstallHelper.openInstallPermissionSettings(context)
+            }
         }
     }
 

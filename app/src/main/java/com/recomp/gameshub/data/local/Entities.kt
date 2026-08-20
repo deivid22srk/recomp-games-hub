@@ -37,3 +37,12 @@ data class DownloadEntity(
     val addedAt: Long,
     val completedAt: Long?,
 )
+
+@Entity(tableName = "installed_games")
+data class InstalledGameEntity(
+    @PrimaryKey val slug: String,
+    val packageName: String,
+    val versionName: String?,
+    val versionCode: Long,
+    val updatedAt: Long,
+)

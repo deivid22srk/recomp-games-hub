@@ -10,6 +10,7 @@ import com.recomp.gameshub.data.repository.AuthRepository
 import com.recomp.gameshub.data.repository.CatalogRepository
 import com.recomp.gameshub.data.repository.ContributionRepository
 import com.recomp.gameshub.data.repository.DownloadRepository
+import com.recomp.gameshub.data.repository.InstalledGamesRepository
 import com.recomp.gameshub.data.repository.SettingsRepository
 import com.recomp.gameshub.download.DownloadEngine
 import kotlinx.coroutines.CoroutineScope
@@ -48,4 +49,5 @@ class AppContainer(
 
     val downloadRepository = DownloadRepository(database.downloadDao(), downloadsDir, appScope)
     val downloadEngine = DownloadEngine(downloadRepository, networkClient)
+    val installedGamesRepository = InstalledGamesRepository(database.installedGamesDao())
 }

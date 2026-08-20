@@ -46,3 +46,12 @@ interface DownloadDao {
     @Query("UPDATE downloads SET phase = :phase, errorMessage = NULL WHERE phase IN ('PENDING', 'DOWNLOADING')")
     suspend fun resetInterrupted(phase: String)
 }
+
+@Dao
+interface InstalledGamesDao {
+    @Query("SELECT * FROM installed_games WHERE slug = :slug")
+    fun observeBySlug(slug: String): Flow<InstalledGameEntity?>
+
+    @Upsert
+    suspend fun upsert(entity: InstalledGameEntity)
+}

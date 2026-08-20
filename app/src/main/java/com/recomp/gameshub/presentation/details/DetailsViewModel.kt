@@ -9,8 +9,11 @@ import com.recomp.gameshub.data.repository.CatalogRepository
 import com.recomp.gameshub.data.remote.GithubRelease
 import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.repository.DownloadRepository
+import com.recomp.gameshub.data.repository.InstalledGamesRepository
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.domain.model.GameDetail
+import com.recomp.gameshub.domain.model.GameInstallState
+import com.recomp.gameshub.domain.model.AppVersions
 import com.recomp.gameshub.download.DownloadService
 import com.recomp.gameshub.download.InstallHelper
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -33,6 +37,7 @@ data class DetailsUiState(
 class DetailsViewModel(
     private val catalogRepository: CatalogRepository,
     private val downloadRepository: DownloadRepository,
+    private val installedGamesRepository: InstalledGamesRepository,
     private val context: Context,
     private val slug: String,
     private val githubReleaseApi: GithubReleaseApi,
@@ -44,6 +49,7 @@ class DetailsViewModel(
     val releases: StateFlow<List<GithubRelease>> = _releases.asStateFlow()
     private val _releaseError = MutableStateFlow<String?>(null)
     val releaseError: StateFlow<String?> = _releaseError.asStateFlow()
+    private val _refreshTick = MutableStateFlow(0)
 
     val downloadTask: StateFlow<DownloadTask?> = downloadRepository.observeTask(slug)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -59,6 +65,29 @@ class DetailsViewModel(
             error = error,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailsUiState())
+
+    val installState: StateFlow<GameInstallState> = combine(
+        installedGamesRepository.observeInstalled(slug),
+        _releases,
+        uiState,
+        _refreshTick,
+    ) { mapping, rels, state, _ ->
+        if (mapping == null) {
+            GameInstallState.Unknown
+        } else {
+            val latest = rels.firstOrNull()?.version
+                ?: state.detail?.summary?.version
+            val installedInfo = InstallHelper.installedPackageInfo(context, mapping.packageName)
+            val info = installedInfo ?: return@combine GameInstallState.NotInstalled(mapping.packageName)
+            GameInstallState.Installed(
+                packageName = mapping.packageName,
+                installedVersionName = info.versionName ?: mapping.versionName,
+                installedVersionCode = info.versionCode,
+                latestVersion = latest,
+                isUpToDate = latest == null || !AppVersions.isOutdated(info.versionName, latest),
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GameInstallState.Unknown)
 
     init {
         ensureDetail()
@@ -119,11 +148,32 @@ class DetailsViewModel(
         val task = downloadTask.value ?: return
         val file = File(task.localPath)
         if (!file.exists()) return
-        if (InstallHelper.canRequestInstalls(context)) {
-            InstallHelper.installPackage(context, file)
-        } else {
-            InstallHelper.openInstallPermissionSettings(context)
+        viewModelScope.launch {
+            val identity = InstallHelper.readApkIdentity(context, file)
+            if (identity != null) {
+                installedGamesRepository.remember(
+                    slug = task.id,
+                    packageName = identity.packageName,
+                    versionName = identity.versionName,
+                    versionCode = identity.versionCode,
+                )
+            }
+            if (InstallHelper.canRequestInstalls(context)) {
+                InstallHelper.installPackage(context, file)
+            } else {
+                InstallHelper.openInstallPermissionSettings(context)
+            }
         }
+    }
+
+    fun openGame() {
+        (installState.value as? GameInstallState.Installed)?.let {
+            InstallHelper.launchPackageOpt(context, it.packageName)
+        }
+    }
+
+    fun refreshInstallState() {
+        _refreshTick.update { it + 1 }
     }
 
     fun share() {

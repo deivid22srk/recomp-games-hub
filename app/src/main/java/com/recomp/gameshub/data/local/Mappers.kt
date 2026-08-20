@@ -7,6 +7,7 @@ import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.domain.model.GameDetail
 import com.recomp.gameshub.domain.model.GameStatus
 import com.recomp.gameshub.domain.model.GameSummary
+import com.recomp.gameshub.domain.model.InstalledGame
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -109,4 +110,13 @@ fun DownloadEntity.toTask(): DownloadTask =
         errorMessage = errorMessage,
         addedAt = addedAt,
         completedAt = completedAt,
+    )
+
+fun InstalledGameEntity.toDomain(): InstalledGame =
+    InstalledGame(
+        slug = slug,
+        packageName = packageName,
+        versionName = versionName,
+        versionCode = versionCode,
+        updatedAt = updatedAt,
     )

@@ -169,6 +169,7 @@ class DownloadNotifier(private val context: Context) {
     fun installPendingIntent(task: DownloadTask): PendingIntent {
         val intent = Intent(context, InstallStatusReceiver::class.java)
             .putExtra(InstallStatusReceiver.EXTRA_INSTALL_PATH, task.localPath)
+            .putExtra(InstallStatusReceiver.EXTRA_SLUG, task.id)
         return PendingIntent.getBroadcast(
             context,
             requestCode("install", task.id),
