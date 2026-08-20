@@ -26,17 +26,15 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -295,19 +293,40 @@ private fun resolveCatalogImage(slug: String, value: String?): String? {
 
 @Composable
 private fun CatalogHeader(onSearch: () -> Unit) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Recomp Hub", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("Recompilações. Um só lugar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        IconButton(onClick = onSearch) {
-            Icon(Icons.Rounded.Search, contentDescription = "Pesquisar jogos")
+        Text(
+            text = "Recomp Hub",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Recompilações. Um só lugar.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = onSearch,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Icon(Icons.Rounded.Search, contentDescription = null)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "Pesquisar jogos por nome",
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+            )
+            Text(
+                text = "Abrir",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -331,29 +350,61 @@ private fun GameSearchScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("Nome do jogo") },
+                    label = { Text("Nome do jogo") },
+                    placeholder = { Text("Ex.: Sonic, Mario, Zelda…") },
                     leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { viewModel.searchGames(input) },
+                            enabled = input.trim().length >= 2,
+                        ) {
+                            Icon(Icons.Rounded.Search, contentDescription = "Buscar")
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
                 )
-                Button(onClick = { viewModel.searchGames(input) }, enabled = input.trim().length >= 2) {
-                    Text("Buscar")
-                }
             }
             Text(
-                text = "Digite pelo menos 2 caracteres. A busca é feita no servidor.",
+                text = "Digite pelo menos 2 caracteres para pesquisar no catálogo.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
             when {
+                query.isBlank() && results.isEmpty() && error == null -> Box(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = "Encontre um jogo",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Pesquise pelo nome da recompilação e encontre rapidamente o que deseja baixar.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                }
                 isSearching -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -409,45 +460,6 @@ private fun GameGridSkeleton() {
             }
         }
     }
-}
-
-@Composable
-private fun SearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        singleLine = true,
-        placeholder = { Text("Buscar jogo…") },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Rounded.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = "Limpar busca",
-                    )
-                }
-            }
-        },
-        shape = RoundedCornerShape(28.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-        ),
-        modifier = modifier.fillMaxWidth(),
-    )
 }
 
 @Composable
