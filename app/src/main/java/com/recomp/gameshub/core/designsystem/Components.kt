@@ -255,6 +255,20 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun InfoBanner(message: String, isError: Boolean) {
+    val color = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+    val onColor = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
+    Surface(color = color, shape = MaterialTheme.shapes.medium) {
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = onColor,
+            modifier = Modifier.padding(12.dp),
+        )
+    }
+}
+
+@Composable
 fun DownloadControl(
     task: DownloadTask?,
     onStart: () -> Unit,

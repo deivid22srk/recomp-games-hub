@@ -61,6 +61,8 @@ private fun AppRoot() {
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        val app = context.applicationContext as RecompApplication
+        app.container.authRepository.refreshIfNeeded()
     }
 
     AppNavHost()

@@ -1,0 +1,117 @@
+package com.recomp.gameshub.data.repository
+
+import com.recomp.gameshub.data.remote.supabase.GameRow
+import com.recomp.gameshub.data.remote.supabase.SupabaseApi
+import com.recomp.gameshub.data.remote.supabase.toSubmission
+import com.recomp.gameshub.domain.model.AuthException
+import com.recomp.gameshub.domain.model.GameSubmission
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class ContributionRepository(
+    private val api: SupabaseApi,
+    private val authRepository: AuthRepository,
+) {
+    private fun requireToken(admin: Boolean = false): String {
+        val access = authRepository.session?.accessToken
+            ?: throw AuthException("Você precisa estar conectado para acessar esta área.")
+        if (admin && !authRepository.isAdmin.value) {
+            throw AuthException("Apenas administradores podem realizar esta ação.")
+        }
+        return access
+    }
+
+    suspend fun submit(game: GameSubmission): Result<Unit> =
+        runCatching {
+            val token = requireToken()
+            val userId = authRepository.session?.user?.id
+                ?: throw AuthException("Sessão inválida. Entre novamente.")
+            api.insertGame(game.toRow(), token, userId)
+        }
+
+    suspend fun updateOwn(submission: GameSubmission): Result<Unit> =
+        runCatching {
+            val token = requireToken()
+            api.updateOwnGame(submission.slug, submission.toRow(), token)
+        }
+
+    suspend fun deleteOwn(slug: String): Result<Unit> =
+        runCatching {
+            val token = requireToken()
+            api.deleteOwnGame(slug, token)
+        }
+
+    suspend fun mySubmissions(): Result<List<GameSubmission>> =
+        runCatching {
+            val token = requireToken()
+            api.fetchMyGames(token).map { it.toSubmission() }
+        }
+
+    // ---------- Admin review ----------
+
+    suspend fun pendingSubmissions(): Result<List<GameSubmission>> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.fetchPendingGames(token).map { it.toSubmission() }
+        }
+
+    suspend fun approve(slug: String): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.setReviewStatus(slug, STATUS_APPROVED, token)
+        }
+
+    suspend fun reject(slug: String, reason: String): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.setReviewStatus(slug, STATUS_REJECTED, token, reason.takeIf { it.isNotBlank() })
+        }
+
+    suspend fun adminUpdate(slug: String, game: GameSubmission): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.updateOwnGame(slug, game.toRow(), token)
+        }
+
+    suspend fun adminDelete(slug: String): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.deleteOwnGame(slug, token)
+        }
+
+    private fun GameSubmission.toRow(): GameRow =
+        GameRow(
+            id = submissionId.takeIf { it.isNotBlank() },
+            slug = slug,
+            title = name,
+            description = description,
+            status = devStatus,
+            version = version,
+            originalPlatform = originalPlatform,
+            author = author,
+            sourceRepoUrl = sourceRepo,
+            apkUrl = apkUrl,
+            fileSizeBytes = fileSizeBytes,
+            tags = tags,
+            coverUrl = coverUrl,
+            bannerUrl = bannerUrl,
+            reviewReason = reviewReason,
+        )
+
+    suspend fun validateSlugAvailability(slug: String): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val existing = api.fetchApprovedGames().any { it.slug == slug } ||
+                    api.fetchPendingGamesSafe().any { it.slug == slug }
+                !existing
+            }
+        }
+
+    private suspend fun fetchPendingGamesSafe() =
+        runCatching { api.fetchPendingGames(requireToken()) }.getOrElse { emptyList() }
+
+    companion object {
+        private const val STATUS_APPROVED = "approved"
+        private const val STATUS_REJECTED = "rejected"
+    }
+}

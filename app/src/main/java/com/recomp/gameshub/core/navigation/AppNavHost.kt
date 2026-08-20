@@ -13,7 +13,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.recomp.gameshub.presentation.admin.AdminReviewRoute
 import com.recomp.gameshub.presentation.catalog.CatalogRoute
+import com.recomp.gameshub.presentation.contribution.ContributionRoute
 import com.recomp.gameshub.presentation.downloads.DownloadsRoute
 import com.recomp.gameshub.presentation.settings.SettingsRoute
 import com.recomp.gameshub.presentation.splash.SplashScreen
@@ -71,6 +73,19 @@ fun AppNavHost() {
                 onBack = { navController.popBackStack() },
                 onOpenCatalog = { navigateTo(Routes.Catalog) },
                 onOpenDownloads = { navigateTo(Routes.Downloads) },
+                onOpenContribution = { navigateTo(Routes.Contribution) },
+                onOpenAdminReview = { navigateTo(Routes.AdminReview) },
+            )
+        }
+        composable(Routes.Contribution) {
+            ContributionRoute(
+                onBack = { navController.popBackStack() },
+                onOpenAdminReview = { navigateTo(Routes.AdminReview) },
+            )
+        }
+        composable(Routes.AdminReview) {
+            AdminReviewRoute(
+                onBack = { navController.popBackStack() },
             )
         }
     }
