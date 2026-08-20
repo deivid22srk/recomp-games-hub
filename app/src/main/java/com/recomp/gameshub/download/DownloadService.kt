@@ -99,6 +99,13 @@ class DownloadService : Service() {
 
     private suspend fun refreshNotifications(active: List<com.recomp.gameshub.domain.model.DownloadTask>, others: List<com.recomp.gameshub.domain.model.DownloadTask>) {
         if (active.isEmpty()) {
+            // StateFlow starts with an empty value while its upstream is being
+            // connected. Do not tear down the foreground service if the real
+            // repository snapshot already contains a pending task.
+            if (repository.hasActiveWork()) {
+                engine.start(scope)
+                return
+            }
             if (startedForeground) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 startedForeground = false

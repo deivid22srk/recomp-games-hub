@@ -46,6 +46,11 @@ class DownloadRepository(
 
     fun task(id: String): DownloadTask? = _tasks.value[id]
 
+    /** Snapshot síncrono usado pelo serviço para evitar a corrida do StateFlow inicial. */
+    fun currentTasks(): List<DownloadTask> = _tasks.value.values.toList()
+
+    fun hasActiveWork(): Boolean = _tasks.value.values.any { it.phase.isActive }
+
     fun hasPendingWork(): Boolean = _tasks.value.values.any { it.phase == DownloadPhase.PENDING }
 
     suspend fun restoreInterrupted() {

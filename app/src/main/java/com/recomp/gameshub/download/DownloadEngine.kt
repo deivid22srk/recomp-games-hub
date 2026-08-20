@@ -48,7 +48,7 @@ class DownloadEngine(
 
     private fun drive() {
         val scope = scope ?: return
-        val pending = repository.tasks.value.filter { it.isActive && it.id !in active }
+        val pending = repository.currentTasks().filter { it.isActive && it.id !in active }
         val slots = maxConcurrent - active.size
         pending.take(slots).forEach { task ->
             active += task.id
