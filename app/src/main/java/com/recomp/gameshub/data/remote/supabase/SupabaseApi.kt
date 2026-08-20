@@ -192,6 +192,16 @@ class SupabaseApi(
             token = accessToken,
         )
 
+    suspend fun fetchAllGames(accessToken: String): List<GameRow> =
+        selectRows(
+            GAMES_TABLE,
+            filter = "id=not.is.null",
+            select = "id,slug,title,description,original_platform,status,version,author," +
+                "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
+                "submitted_by,review_status,created_at,updated_at,review_reason,game_screenshots(image_url,sort_order)",
+            token = accessToken,
+        )
+
     suspend fun fetchProfile(accessToken: String): ProfileRow? {
         val userId = fetchUser(accessToken).id
         return selectRows<ProfileRow>(
@@ -248,7 +258,12 @@ class SupabaseApi(
         }
     }
 
-    suspend fun updateOwnGame(slug: String, game: GameRow, accessToken: String) {
+    suspend fun updateOwnGame(
+        slug: String,
+        game: GameRow,
+        accessToken: String,
+        screenshots: List<String>? = null,
+    ) {
         val payload = buildJsonObject {
             put("title", game.title)
             put("description", game.description)
@@ -270,6 +285,32 @@ class SupabaseApi(
             headers = postgrestHeaders(accessToken),
             body = jsonBody(json.encodeToString(payload)),
         )
+        if (screenshots != null && !game.id.isNullOrBlank()) {
+            replaceScreenshots(game.id, screenshots, accessToken)
+        }
+    }
+
+    private suspend fun replaceScreenshots(gameId: String, urls: List<String>, accessToken: String) {
+        raw(
+            "DELETE",
+            "/rest/v1/$SCREENSHOTS_TABLE?game_id=eq.${esc(gameId)}",
+            headers = postgrestHeaders(accessToken, prefer = "return=minimal"),
+        )
+        if (urls.isNotEmpty()) {
+            val payload = JsonArray(urls.mapIndexed { index, url ->
+                buildJsonObject {
+                    put("game_id", gameId)
+                    put("image_url", url)
+                    put("sort_order", index)
+                }
+            })
+            raw(
+                "POST",
+                "/rest/v1/$SCREENSHOTS_TABLE",
+                headers = postgrestHeaders(accessToken, prefer = "return=minimal"),
+                body = jsonBody(payload.toString()),
+            )
+        }
     }
 
     suspend fun deleteOwnGame(slug: String, accessToken: String) {

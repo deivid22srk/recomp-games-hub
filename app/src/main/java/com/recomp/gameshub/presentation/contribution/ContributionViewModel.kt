@@ -121,6 +121,64 @@ class ContributionViewModel(
         }
     }
 
+    fun updateForm(
+        original: GameSubmission,
+        name: String,
+        status: String,
+        version: String?,
+        description: String,
+        originalPlatform: String?,
+        author: String?,
+        sourceRepo: String?,
+        tags: List<String>,
+        coverUrl: String?,
+        bannerUrl: String?,
+        screenshots: List<String>,
+    ) {
+        if (_isSubmitting.value) return
+        val slug = name.toSlugOrNull() ?: run {
+            _submitError.value = "O nome do jogo é obrigatório."
+            return
+        }
+        viewModelScope.launch {
+            _isSubmitting.value = true
+            _submitError.value = null
+            val updated = original.copy(
+                slug = slug,
+                name = name.trim(),
+                devStatus = status.toDevStatus(),
+                version = version?.trim()?.takeIf { it.isNotBlank() },
+                description = description.trim(),
+                originalPlatform = originalPlatform?.trim()?.takeIf { it.isNotBlank() },
+                author = author?.trim()?.takeIf { it.isNotBlank() },
+                sourceRepo = sourceRepo?.trim()?.takeIf { it.isNotBlank() },
+                tags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+                coverUrl = coverUrl?.trim()?.takeIf { it.isNotBlank() },
+                bannerUrl = bannerUrl?.trim()?.takeIf { it.isNotBlank() },
+                screenshots = screenshots.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+            )
+            contributionRepository.updateOwn(updated)
+                .onSuccess {
+                    _formVisible.value = false
+                    _successMessage.value = "Contribuição atualizada."
+                    loadSubmissions()
+                }
+                .onFailure { _submitError.value = it.message }
+            _isSubmitting.value = false
+        }
+    }
+
+    fun delete(slug: String) {
+        viewModelScope.launch {
+            contributionRepository.deleteOwn(slug)
+                .onSuccess {
+                    _successMessage.value = "Contribuição excluída."
+                    loadSubmissions()
+                }
+                .onFailure { _submitError.value = it.message }
+        }
+    }
+
     fun submitForm(
         name: String,
         status: String,

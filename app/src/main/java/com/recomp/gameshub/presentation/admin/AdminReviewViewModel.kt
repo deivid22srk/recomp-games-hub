@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 
 data class AdminReviewUiState(
     val pending: List<GameSubmission> = emptyList(),
+    val all: List<GameSubmission> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val successMessage: String? = null,
@@ -25,25 +26,31 @@ class AdminReviewViewModel(
     authRepository: AuthRepository,
 ) : ViewModel() {
 
+    private data class AdminLists(
+        val pending: List<GameSubmission>,
+        val all: List<GameSubmission>,
+    )
+
     private val _pending = MutableStateFlow<List<GameSubmission>>(emptyList())
+    private val _all = MutableStateFlow<List<GameSubmission>>(emptyList())
     private val _isLoading = MutableStateFlow(true)
     private val _error = MutableStateFlow<String?>(null)
     private val _successMessage = MutableStateFlow<String?>(null)
     private val _isAdmin = MutableStateFlow(authRepository.isAdmin.value)
 
     val uiState: StateFlow<AdminReviewUiState> = combine(
-        _pending,
-        _isLoading,
-        _error,
-        _successMessage,
-        _isAdmin,
-    ) { pending, loading, error, success, admin ->
+        combine(_pending, _all) { pending, all -> AdminLists(pending, all) },
+        combine(_isLoading, _error, _successMessage, _isAdmin) { loading, error, success, admin ->
+            AdminReviewUiState(isLoading = loading, error = error, successMessage = success, isAdmin = admin)
+        },
+    ) { lists, status ->
         AdminReviewUiState(
-            pending = pending,
-            isLoading = loading,
-            error = error,
-            successMessage = success,
-            isAdmin = admin,
+            pending = lists.pending,
+            all = lists.all,
+            isLoading = status.isLoading,
+            error = status.error,
+            successMessage = status.successMessage,
+            isAdmin = status.isAdmin,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdminReviewUiState())
 
@@ -68,6 +75,8 @@ class AdminReviewViewModel(
                     _pending.value = emptyList()
                 }
             _isLoading.value = false
+            contributionRepository.allSubmissions()
+                .onSuccess { _all.value = it }
         }
     }
 
@@ -88,6 +97,28 @@ class AdminReviewViewModel(
                 .onSuccess {
                     _successMessage.value = "Rejeitado: $slug"
                     _pending.value = _pending.value.filterNot { it.slug == slug }
+                }
+                .onFailure { _error.value = it.message }
+        }
+    }
+
+    fun update(game: GameSubmission) {
+        viewModelScope.launch {
+            contributionRepository.adminUpdate(game.slug, game)
+                .onSuccess {
+                    _successMessage.value = "Contribuição atualizada."
+                    refresh()
+                }
+                .onFailure { _error.value = it.message }
+        }
+    }
+
+    fun delete(slug: String) {
+        viewModelScope.launch {
+            contributionRepository.adminDelete(slug)
+                .onSuccess {
+                    _successMessage.value = "Contribuição excluída."
+                    refresh()
                 }
                 .onFailure { _error.value = it.message }
         }

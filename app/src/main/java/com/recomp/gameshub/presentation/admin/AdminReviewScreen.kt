@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +55,8 @@ fun AdminReviewRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var rejectSlug by remember { mutableStateOf<String?>(null) }
+    var editSubmission by remember { mutableStateOf<GameSubmission?>(null) }
+    var deleteSubmission by remember { mutableStateOf<GameSubmission?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -114,6 +118,25 @@ fun AdminReviewRoute(
                             submission = submission,
                             onApprove = { viewModel.approve(submission.slug) },
                             onReject = { rejectSlug = submission.slug },
+                            onEdit = { editSubmission = submission },
+                            onDelete = { deleteSubmission = submission },
+                            showReviewActions = true,
+                        )
+                    }
+                }
+            }
+
+            if (uiState.isAdmin && uiState.all.isNotEmpty()) {
+                item { Text("Todas as contribuições", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 16.dp)) }
+                uiState.all.forEach { submission ->
+                    item(key = "all-${submission.submissionId}") {
+                        AdminSubmissionCard(
+                            submission = submission,
+                            onApprove = { viewModel.approve(submission.slug) },
+                            onReject = { rejectSlug = submission.slug },
+                            onEdit = { editSubmission = submission },
+                            onDelete = { deleteSubmission = submission },
+                            showReviewActions = submission.status == "pending",
                         )
                     }
                 }
@@ -131,6 +154,22 @@ fun AdminReviewRoute(
             onDismiss = { rejectSlug = null },
         )
     }
+    editSubmission?.let { submission ->
+        AdminEditDialog(
+            submission = submission,
+            onSave = { viewModel.update(it); editSubmission = null },
+            onDismiss = { editSubmission = null },
+        )
+    }
+    deleteSubmission?.let { submission ->
+        AlertDialog(
+            onDismissRequest = { deleteSubmission = null },
+            title = { Text("Excluir contribuição?") },
+            text = { Text("A contribuição «${submission.name}» será removida permanentemente.") },
+            confirmButton = { Button(onClick = { viewModel.delete(submission.slug); deleteSubmission = null }) { Text("Excluir") } },
+            dismissButton = { OutlinedButton(onClick = { deleteSubmission = null }) { Text("Cancelar") } },
+        )
+    }
 }
 
 @Composable
@@ -138,6 +177,9 @@ private fun AdminSubmissionCard(
     submission: GameSubmission,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    showReviewActions: Boolean,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -176,22 +218,27 @@ private fun AdminSubmissionCard(
             }
 
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = onReject,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text("Rejeitar")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(4.dp)); Text("Editar")
                 }
-                Button(
-                    onClick = onApprove,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text("Aprovar e publicar")
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(4.dp)); Text("Excluir")
+                }
+            }
+            if (showReviewActions) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(6.dp)); Text("Rejeitar")
+                    }
+                    Button(onClick = onApprove, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(6.dp)); Text("Aprovar")
+                    }
                 }
             }
         }
@@ -208,6 +255,58 @@ private fun ColumnScope.textIf(text: String, show: Boolean) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun AdminEditDialog(
+    submission: GameSubmission,
+    onSave: (GameSubmission) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(submission.name) }
+    var description by remember { mutableStateOf(submission.description) }
+    var platform by remember { mutableStateOf(submission.originalPlatform.orEmpty()) }
+    var author by remember { mutableStateOf(submission.author.orEmpty()) }
+    var version by remember { mutableStateOf(submission.version.orEmpty()) }
+    var repository by remember { mutableStateOf(submission.sourceRepo.orEmpty()) }
+    var apkUrl by remember { mutableStateOf(submission.apkUrl.orEmpty()) }
+    var size by remember { mutableStateOf(submission.fileSizeBytes.toString()) }
+    var tags by remember { mutableStateOf(submission.tags.joinToString(", ")) }
+    var cover by remember { mutableStateOf(submission.coverUrl.orEmpty()) }
+    var banner by remember { mutableStateOf(submission.bannerUrl.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar contribuição") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(description, { description = it }, label = { Text("Descrição") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(platform, { platform = it }, label = { Text("Plataforma") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(author, { author = it }, label = { Text("Autor") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(version, { version = it }, label = { Text("Versão") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(repository, { repository = it }, label = { Text("Repositório") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(apkUrl, { apkUrl = it }, label = { Text("URL do APK") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(size, { size = it }, label = { Text("Tamanho em bytes") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags separadas por vírgula") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(cover, { cover = it }, label = { Text("URL da capa") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(banner, { banner = it }, label = { Text("URL do banner") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(submission.copy(
+                    slug = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-'),
+                    name = name.trim(), description = description.trim(),
+                    originalPlatform = platform.trim().ifBlank { null }, author = author.trim().ifBlank { null },
+                    version = version.trim().ifBlank { null }, sourceRepo = repository.trim().ifBlank { null },
+                    apkUrl = apkUrl.trim().ifBlank { null }, fileSizeBytes = size.toLongOrNull() ?: 0L,
+                    tags = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+                    coverUrl = cover.trim().ifBlank { null }, bannerUrl = banner.trim().ifBlank { null },
+                ))
+            }, enabled = name.isNotBlank()) { Text("Salvar") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
 
 @Composable

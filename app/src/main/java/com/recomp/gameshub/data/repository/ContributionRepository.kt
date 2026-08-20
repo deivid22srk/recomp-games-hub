@@ -38,7 +38,7 @@ class ContributionRepository(
     suspend fun updateOwn(submission: GameSubmission): Result<Unit> =
         runCatching {
             val token = requireToken()
-            api.updateOwnGame(submission.slug, submission.toRow(), token)
+            api.updateOwnGame(submission.slug, submission.toRow(), token, submission.screenshots)
         }
 
     suspend fun deleteOwn(slug: String): Result<Unit> =
@@ -61,6 +61,12 @@ class ContributionRepository(
             api.fetchPendingGames(token).map { it.toSubmission() }
         }
 
+    suspend fun allSubmissions(): Result<List<GameSubmission>> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.fetchAllGames(token).map { it.toSubmission() }
+        }
+
     suspend fun approve(slug: String): Result<Unit> =
         runCatching {
             val token = requireToken(admin = true)
@@ -76,7 +82,7 @@ class ContributionRepository(
     suspend fun adminUpdate(slug: String, game: GameSubmission): Result<Unit> =
         runCatching {
             val token = requireToken(admin = true)
-            api.updateOwnGame(slug, game.toRow(), token)
+            api.updateOwnGame(slug, game.toRow(), token, game.screenshots)
         }
 
     suspend fun adminDelete(slug: String): Result<Unit> =

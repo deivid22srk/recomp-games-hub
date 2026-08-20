@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,6 +72,8 @@ fun ContributionRoute(
     val successMessage by viewModel.successMessage.collectAsStateWithLifecycle()
     val isSubmitting by viewModel.isSubmitting.collectAsStateWithLifecycle()
     val formVisible by viewModel.formVisible.collectAsStateWithLifecycle()
+    var editing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.recomp.gameshub.domain.model.GameSubmission?>(null) }
+    var deleting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.recomp.gameshub.domain.model.GameSubmission?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -170,7 +174,7 @@ fun ContributionRoute(
 
                 item {
                     Button(
-                        onClick = { viewModel.toggleForm(true) },
+                        onClick = { editing = null; viewModel.toggleForm(true) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
                     ) {
@@ -198,9 +202,14 @@ fun ContributionRoute(
                 if (formVisible) {
                     item {
                         GameSubmissionForm(
+                            initial = editing,
                             isSubmitting = isSubmitting,
-                            onSubmit = viewModel::submitForm,
-                            onCancel = { viewModel.toggleForm(false) },
+                            onSubmit = { name, status, version, description, platform, author, repository, tags, cover, banner, screenshots ->
+                                editing?.let { original ->
+                                    viewModel.updateForm(original, name, status, version, description, platform, author, repository, tags, cover, banner, screenshots)
+                                } ?: viewModel.submitForm(name, status, version, description, platform, author, repository, tags, cover, banner, screenshots)
+                            },
+                            onCancel = { editing = null; viewModel.toggleForm(false) },
                         )
                     }
                 }
@@ -230,7 +239,11 @@ fun ContributionRoute(
                 } else {
                     submissions.forEach { submission ->
                         item(key = submission.slug) {
-                            SubmissionCard(submission)
+                            SubmissionCard(
+                                submission = submission,
+                                onEdit = { editing = submission; viewModel.toggleForm(true) },
+                                onDelete = { deleting = submission },
+                            )
                         }
                     }
                 }
@@ -239,10 +252,26 @@ fun ContributionRoute(
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+
+    deleting?.let { submission ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Excluir contribuição?") },
+            text = { Text("A contribuição «${submission.name}» será removida permanentemente.") },
+            confirmButton = {
+                Button(onClick = { viewModel.delete(submission.slug); deleting = null }) { Text("Excluir") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
+        )
+    }
 }
 
 @Composable
-private fun SubmissionCard(submission: com.recomp.gameshub.domain.model.GameSubmission) {
+private fun SubmissionCard(
+    submission: com.recomp.gameshub.domain.model.GameSubmission,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val status = when (submission.status) {
         "approved" -> SubmissionStatus.APPROVED
         "rejected" -> SubmissionStatus.REJECTED
@@ -271,6 +300,18 @@ private fun SubmissionCard(submission: com.recomp.gameshub.domain.model.GameSubm
                     modifier = Modifier.weight(1f),
                 )
                 Text(status.label, style = MaterialTheme.typography.labelMedium, color = onStatusColor)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Editar")
+                }
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Excluir")
+                }
             }
             textIf("v${submission.version}", submission.version)
             textIf(submission.slug, submission.slug)
@@ -412,6 +453,7 @@ private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
 
 @Composable
 private fun GameSubmissionForm(
+    initial: com.recomp.gameshub.domain.model.GameSubmission? = null,
     isSubmitting: Boolean,
     onSubmit: (
         name: String,
@@ -428,17 +470,17 @@ private fun GameSubmissionForm(
     ) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var name by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var status by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("stable") }
-    var version by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var description by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var platform by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var author by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var sourceRepo by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var tagsText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var coverUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var bannerUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var screenshotsText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var name by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.name.orEmpty()) }
+    var status by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.devStatus ?: "stable") }
+    var version by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.version.orEmpty()) }
+    var description by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.description.orEmpty()) }
+    var platform by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.originalPlatform.orEmpty()) }
+    var author by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.author.orEmpty()) }
+    var sourceRepo by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.sourceRepo.orEmpty()) }
+    var tagsText by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.tags?.joinToString(", ").orEmpty()) }
+    var coverUrl by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.coverUrl.orEmpty()) }
+    var bannerUrl by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.bannerUrl.orEmpty()) }
+    var screenshotsText by androidx.compose.runtime.remember(initial?.submissionId) { androidx.compose.runtime.mutableStateOf(initial?.screenshots?.joinToString(", ").orEmpty()) }
     var aiJson by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var aiError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val clipboard = LocalClipboardManager.current
@@ -453,7 +495,7 @@ Obtenha automaticamente, usando o conteúdo do repositório e as releases, os da
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Enviar jogo", style = MaterialTheme.typography.titleLarge)
+            Text(if (initial == null) "Enviar jogo" else "Editar contribuição", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(4.dp))
             Text(
                 "Preencha com o máximo de detalhes. URLs de imagem devem ser diretas (https).",
@@ -575,7 +617,7 @@ Obtenha automaticamente, usando o conteúdo do repositório e as releases, os da
                     if (isSubmitting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Enviar para revisão")
+                        Text(if (initial == null) "Enviar para revisão" else "Salvar alterações")
                     }
                 }
             }
