@@ -2,6 +2,7 @@ package com.recomp.gameshub.presentation.admin
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -148,10 +149,10 @@ private fun AdminSubmissionCard(
             Spacer(Modifier.height(4.dp))
             textIf("slug: ${submission.slug}", submission.slug.isNotBlank())
             textIf("Descrição: ${submission.description}", submission.description.isNotBlank())
-            textIf("Plataforma: ${submission.originalPlatform}", submission.originalPlatform)
-            textIf("Autor: ${submission.author}", submission.author)
-            textIf("Versão: ${submission.version}", submission.version)
-            textIf("Repositório: ${submission.sourceRepo}", submission.sourceRepo)
+            textIf("Plataforma: ${submission.originalPlatform}", !submission.originalPlatform.isNullOrBlank())
+            textIf("Autor: ${submission.author}", !submission.author.isNullOrBlank())
+            textIf("Versão: ${submission.version}", !submission.version.isNullOrBlank())
+            textIf("Repositório: ${submission.sourceRepo}", !submission.sourceRepo.isNullOrBlank())
             submission.apkUrl?.let {
                 Text(
                     "APK: $it",
@@ -198,7 +199,7 @@ private fun AdminSubmissionCard(
 }
 
 @Composable
-private fun Column.textIf(text: String, show: Boolean) {
+private fun ColumnScope.textIf(text: String, show: Boolean) {
     if (show) {
         Spacer(Modifier.height(2.dp))
         Text(

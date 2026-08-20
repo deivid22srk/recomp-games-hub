@@ -4,6 +4,7 @@ import com.recomp.gameshub.data.remote.supabase.GameRow
 import com.recomp.gameshub.data.remote.supabase.SupabaseApi
 import com.recomp.gameshub.data.remote.supabase.toSubmission
 import com.recomp.gameshub.domain.model.AuthException
+import com.recomp.gameshub.domain.model.AuthState
 import com.recomp.gameshub.domain.model.GameSubmission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,7 +25,7 @@ class ContributionRepository(
     suspend fun submit(game: GameSubmission): Result<Unit> =
         runCatching {
             val token = requireToken()
-            val userId = authRepository.session?.user?.id
+            val userId = (authRepository.state.value as? AuthState.SignedIn)?.user?.id
                 ?: throw AuthException("Sessão inválida. Entre novamente.")
             api.insertGame(game.toRow(), token, userId)
         }
@@ -102,7 +103,7 @@ class ContributionRepository(
         withContext(Dispatchers.IO) {
             runCatching {
                 val existing = api.fetchApprovedGames().any { it.slug == slug } ||
-                    api.fetchPendingGamesSafe().any { it.slug == slug }
+                    fetchPendingGamesSafe().any { it.slug == slug }
                 !existing
             }
         }

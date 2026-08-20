@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 private val Context.authDataStore by preferencesDataStore(name = "auth")
 
@@ -69,7 +70,7 @@ class AuthRepository(
             val session = api.signIn(email, password)
             val profile = runCatching { api.fetchProfile(session.accessToken) }.getOrNull()
             val user = session.toCurrentUser(profile?.isAdmin ?: false)
-            persist(user, session)
+            persist(user, session.toDomainSession())
             user
         }
 
@@ -77,7 +78,7 @@ class AuthRepository(
         authFlow {
             val session = api.signUp(email, password)
             val user = session.toCurrentUser(isAdmin = false)
-            persist(user, session)
+            persist(user, session.toDomainSession())
             user
         }
 
@@ -104,7 +105,7 @@ class AuthRepository(
             val refreshed = api.refreshSession(current.refreshToken)
             val profile = runCatching { api.fetchProfile(refreshed.accessToken) }.getOrNull()
             val user = refreshed.toCurrentUser(profile?.isAdmin ?: false)
-            persist(user, refreshed)
+            persist(user, refreshed.toDomainSession())
         }.onFailure {
             forceSignOut()
         }
@@ -120,11 +121,11 @@ class AuthRepository(
         }
     }
 
-    private suspend fun persist(user: CurrentUser, session: AuthSessionDto) {
+    private suspend fun persist(user: CurrentUser, session: AuthSession) {
         context.authDataStore.edit { prefs ->
             prefs[accessTokenKey] = session.accessToken
             prefs[refreshTokenKey] = session.refreshToken
-            prefs[expiresAtKey] = System.currentTimeMillis() + (session.expiresIn * 1000L)
+            prefs[expiresAtKey] = session.expiresAt
             prefs[userIdKey] = user.id
             if (user.email != null) prefs[userEmailKey] = user.email
             prefs[isAdminKey] = user.isAdmin.toString()
@@ -132,15 +133,18 @@ class AuthRepository(
         }
         _state.value = AuthState.SignedIn(
             user = user,
-            session = AuthSession(
-                accessToken = session.accessToken,
-                refreshToken = session.refreshToken,
-                expiresAt = System.currentTimeMillis() + (session.expiresIn * 1000L),
-            ),
+            session = session,
         )
         _isAdmin.value = user.isAdmin
         _username.value = null
     }
+
+    private fun AuthSessionDto.toDomainSession(): AuthSession =
+        AuthSession(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            expiresAt = System.currentTimeMillis() + (expiresIn * 1000L),
+        )
 
     private suspend fun clear() = context.authDataStore.edit { it.clear() }
 
@@ -151,9 +155,12 @@ class AuthRepository(
         _username.value = null
     }
 
-    private inline fun <T> authFlow(crossinline block: suspend () -> T): Result<T> =
-        runCatching { kotlinx.coroutines.withContext(Dispatchers.IO) { block() } }
-            .recoverCatching { e -> throw e.friendly() }
+    private suspend fun <T> authFlow(block: suspend () -> T): Result<T> =
+        try {
+            Result.success(withContext(Dispatchers.IO) { block() })
+        } catch (e: Throwable) {
+            Result.failure(e.friendly())
+        }
 
     private fun Throwable.friendly(): Throwable = when (this) {
         is AuthException -> this

@@ -9,6 +9,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -167,7 +168,6 @@ class SupabaseApi(
             select = "id,slug,title,description,original_platform,status,version,author," +
                 "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
                 "review_status,created_at,updated_at,game_screenshots(image_url,sort_order)",
-            serializer = GameRow.serializer(),
         )
 
     suspend fun fetchMyGames(accessToken: String): List<GameRow> {
@@ -179,7 +179,6 @@ class SupabaseApi(
                 "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
                 "submitted_by,review_status,created_at,updated_at,game_screenshots(image_url,sort_order)",
             token = accessToken,
-            serializer = GameRow.serializer(),
         )
     }
 
@@ -191,7 +190,6 @@ class SupabaseApi(
                 "source_repo_url,apk_url,file_size_bytes,sha256,tags,cover_url,banner_url," +
                 "submitted_by,review_status,created_at,updated_at",
             token = accessToken,
-            serializer = GameRow.serializer(),
         )
 
     suspend fun fetchProfile(accessToken: String): ProfileRow? {
@@ -201,7 +199,6 @@ class SupabaseApi(
             filter = "id=eq.$userId",
             select = "id,email,is_admin",
             token = accessToken,
-            serializer = ProfileRow.serializer(),
         ).firstOrNull()
     }
 
@@ -220,7 +217,7 @@ class SupabaseApi(
             game.apkUrl?.takeIf { it.isNotBlank() }?.let { put("apk_url", it) }
             put("file_size_bytes", game.fileSizeBytes)
             game.sha256?.takeIf { it.isNotBlank() }?.let { put("sha256", it) }
-            put("tags", game.tags)
+            put("tags", JsonArray(game.tags.map(::JsonPrimitive)))
             game.coverUrl?.takeIf { it.isNotBlank() }?.let { put("cover_url", it) }
             game.bannerUrl?.takeIf { it.isNotBlank() }?.let { put("banner_url", it) }
         }
@@ -244,7 +241,7 @@ class SupabaseApi(
             game.apkUrl?.takeIf { it.isNotBlank() }?.let { put("apk_url", it) }
             put("file_size_bytes", game.fileSizeBytes)
             game.sha256?.takeIf { it.isNotBlank() }?.let { put("sha256", it) }
-            put("tags", game.tags)
+            put("tags", JsonArray(game.tags.map(::JsonPrimitive)))
             game.coverUrl?.takeIf { it.isNotBlank() }?.let { put("cover_url", it) }
             game.bannerUrl?.takeIf { it.isNotBlank() }?.let { put("banner_url", it) }
         }
@@ -284,19 +281,18 @@ class SupabaseApi(
         )
     }
 
-    private suspend fun <T : kotlinx.serialization.Serializable> selectRows(
+    private suspend inline fun <reified T> selectRows(
         table: String,
         filter: String,
         select: String = "*",
         token: String? = null,
-        serializer: kotlinx.serialization.KSerializer<T>,
     ): List<T> {
         val headers = postgrestHeaders(token, prefer = "return=representation")
         val text = raw("GET", "/rest/v1/$table?$filter&select=$select", headers = headers)
         return try {
             val arr = json.decodeFromString<JsonArray>(text)
             arr.mapNotNull { row ->
-                runCatching { json.decodeFromString(serializer, row.toString()) }.getOrNull()
+                runCatching { json.decodeFromString<T>(row.toString()) }.getOrNull()
             }
         } catch (e: SerializationException) {
             throw IOException("JSON inválido em select $table: ${text.take(200)}", e)
