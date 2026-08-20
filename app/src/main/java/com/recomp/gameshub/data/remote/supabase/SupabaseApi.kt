@@ -194,7 +194,7 @@ class SupabaseApi(
 
     suspend fun fetchProfile(accessToken: String): ProfileRow? {
         val userId = fetchUser(accessToken).id
-        return selectRows(
+        return selectRows<ProfileRow>(
             PROFILES_TABLE,
             filter = "id=eq.$userId",
             select = "id,email,is_admin",
