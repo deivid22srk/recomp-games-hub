@@ -202,7 +202,7 @@ class SupabaseApi(
         ).firstOrNull()
     }
 
-    suspend fun insertGame(game: GameRow, accessToken: String, userId: String) {
+    suspend fun insertGame(game: GameRow, accessToken: String, userId: String, screenshots: List<String> = emptyList()) {
         val payload = buildJsonObject {
             put("slug", game.slug)
             put("title", game.title)
@@ -224,9 +224,28 @@ class SupabaseApi(
         raw(
             "POST",
             "/rest/v1/$GAMES_TABLE",
-            headers = postgrestHeaders(accessToken, prefer = "return=minimal"),
+            headers = postgrestHeaders(accessToken, prefer = "return=representation"),
             body = jsonBody(json.encodeToString(payload)),
-        )
+        ).let { response ->
+            val id = runCatching { json.decodeFromString<List<GameRow>>(response).firstOrNull()?.id }.getOrNull()
+            if (id != null && screenshots.isNotEmpty()) {
+                val screenshotPayload = JsonArray(
+                    screenshots.mapIndexed { index, url ->
+                        buildJsonObject {
+                            put("game_id", id)
+                            put("image_url", url)
+                            put("sort_order", index)
+                        }
+                    }
+                )
+                raw(
+                    "POST",
+                    "/rest/v1/$SCREENSHOTS_TABLE",
+                    headers = postgrestHeaders(accessToken, prefer = "return=minimal"),
+                    body = jsonBody(screenshotPayload.toString()),
+                )
+            }
+        }
     }
 
     suspend fun updateOwnGame(slug: String, game: GameRow, accessToken: String) {

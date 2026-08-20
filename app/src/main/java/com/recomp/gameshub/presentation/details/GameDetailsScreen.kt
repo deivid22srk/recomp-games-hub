@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -67,6 +68,7 @@ import com.recomp.gameshub.core.designsystem.ShimmerBox
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.core.util.formatBytes
 import com.recomp.gameshub.domain.model.GameDetail
+import com.recomp.gameshub.data.remote.GithubRelease
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,15 +82,18 @@ fun GameDetailsScreen(
             downloadRepository = it.downloadRepository,
             context = it.appContext,
             slug = slug,
+            githubReleaseApi = it.githubReleaseApi,
         )
     }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadTask by viewModel.downloadTask.collectAsStateWithLifecycle()
+    val releases by viewModel.releases.collectAsStateWithLifecycle()
+    var showReleasePicker by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     BackHandler(onBack = onClose)
 
-    val hasDownloadUrl = uiState.detail?.downloadUrl?.isNotBlank() == true
+    val hasDownloadUrl = uiState.detail?.downloadUrl?.isNotBlank() == true || releases.isNotEmpty()
 
     Box(
         modifier = Modifier
@@ -138,7 +143,7 @@ fun GameDetailsScreen(
 
                 DetailBottomBar(
                     task = downloadTask,
-                    onStart = viewModel::startDownload,
+                    onStart = { if (releases.size > 1) showReleasePicker = true else viewModel.startDownload(releases.firstOrNull()?.apk?.downloadUrl) },
                     onPause = viewModel::pause,
                     onResume = viewModel::resume,
                     onCancel = viewModel::cancel,
@@ -150,7 +155,39 @@ fun GameDetailsScreen(
                 )
             }
         }
+        if (showReleasePicker) {
+            ReleasePickerDialog(
+                releases = releases,
+                onDismiss = { showReleasePicker = false },
+                onSelect = { release -> showReleasePicker = false; viewModel.startDownload(release.apk.downloadUrl) },
+            )
+        }
     }
+}
+
+@Composable
+private fun ReleasePickerDialog(
+    releases: List<GithubRelease>,
+    onDismiss: () -> Unit,
+    onSelect: (GithubRelease) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Escolha a versão para baixar") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                releases.forEachIndexed { index, release ->
+                    FilledTonalButton(onClick = { onSelect(release) }, modifier = Modifier.fillMaxWidth()) {
+                        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (index == 0) "${release.version}  •  mais recente" else release.version, fontWeight = FontWeight.Bold)
+                            Text("${release.author ?: "Autor desconhecido"}  •  ${formatBytes(release.apk.size)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
 
 @Composable

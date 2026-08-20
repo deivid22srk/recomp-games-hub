@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.recomp.gameshub.data.local.AppDatabase
 import com.recomp.gameshub.data.remote.CatalogApi
+import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.remote.supabase.SupabaseApi
 import com.recomp.gameshub.data.repository.AuthRepository
 import com.recomp.gameshub.data.repository.CatalogRepository
@@ -35,10 +36,11 @@ class AppContainer(
 
     val supabaseApi = SupabaseApi(networkClient)
     val catalogApi = CatalogApi(networkClient)
+    val githubReleaseApi = GithubReleaseApi(networkClient)
     val settingsRepository = SettingsRepository(app)
     val authRepository = AuthRepository(app, supabaseApi)
     val catalogRepository = CatalogRepository(supabaseApi, catalogApi, database.gameDao())
-    val contributionRepository = ContributionRepository(supabaseApi, authRepository)
+    val contributionRepository = ContributionRepository(supabaseApi, authRepository, githubReleaseApi)
 
     val downloadsDir: File = File(app.filesDir, "downloads").apply {
         if (!exists()) mkdirs()

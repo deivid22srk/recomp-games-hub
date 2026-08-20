@@ -16,6 +16,7 @@ data class GameSubmission(
     val tags: List<String>,
     val coverUrl: String?,
     val bannerUrl: String?,
+    val screenshots: List<String> = emptyList(),
     val reviewReason: String? = null,
     val submittedAt: String? = null,
 )

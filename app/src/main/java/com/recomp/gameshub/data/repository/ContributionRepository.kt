@@ -1,6 +1,7 @@
 package com.recomp.gameshub.data.repository
 
 import com.recomp.gameshub.data.remote.supabase.GameRow
+import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.remote.supabase.SupabaseApi
 import com.recomp.gameshub.data.remote.supabase.toSubmission
 import com.recomp.gameshub.domain.model.AuthException
@@ -12,6 +13,7 @@ import kotlinx.coroutines.withContext
 class ContributionRepository(
     private val api: SupabaseApi,
     private val authRepository: AuthRepository,
+    private val githubReleaseApi: GithubReleaseApi,
 ) {
     private fun requireToken(admin: Boolean = false): String {
         val access = authRepository.session?.accessToken
@@ -27,8 +29,11 @@ class ContributionRepository(
             val token = requireToken()
             val userId = (authRepository.state.value as? AuthState.SignedIn)?.user?.id
                 ?: throw AuthException("Sessão inválida. Entre novamente.")
-            api.insertGame(game.toRow(), token, userId)
+            api.insertGame(game.toRow(), token, userId, game.screenshots)
         }
+
+    suspend fun resolveLatestRelease(repositoryUrl: String) =
+        runCatching { githubReleaseApi.latest(repositoryUrl) }
 
     suspend fun updateOwn(submission: GameSubmission): Result<Unit> =
         runCatching {
@@ -97,6 +102,7 @@ class ContributionRepository(
             coverUrl = coverUrl,
             bannerUrl = bannerUrl,
             reviewReason = reviewReason,
+            screenshots = emptyList(),
         )
 
     suspend fun validateSlugAvailability(slug: String): Result<Boolean> =

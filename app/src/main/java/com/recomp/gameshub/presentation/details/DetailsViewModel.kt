@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.data.repository.CatalogRepository
+import com.recomp.gameshub.data.remote.GithubRelease
+import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.repository.DownloadRepository
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.domain.model.GameDetail
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -32,10 +35,15 @@ class DetailsViewModel(
     private val downloadRepository: DownloadRepository,
     private val context: Context,
     private val slug: String,
+    private val githubReleaseApi: GithubReleaseApi,
 ) : ViewModel() {
 
     private val _loading = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
+    private val _releases = MutableStateFlow<List<GithubRelease>>(emptyList())
+    val releases: StateFlow<List<GithubRelease>> = _releases.asStateFlow()
+    private val _releaseError = MutableStateFlow<String?>(null)
+    val releaseError: StateFlow<String?> = _releaseError.asStateFlow()
 
     val downloadTask: StateFlow<DownloadTask?> = downloadRepository.observeTask(slug)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -54,6 +62,14 @@ class DetailsViewModel(
 
     init {
         ensureDetail()
+        viewModelScope.launch {
+            val repository = catalogRepository.observeDetail(slug).filterNotNull().first().sourceRepo
+            if (!repository.isNullOrBlank()) {
+                runCatching { githubReleaseApi.fetchReleases(repository) }
+                    .onSuccess { _releases.value = it }
+                    .onFailure { _releaseError.value = it.message }
+            }
+        }
     }
 
     fun ensureDetail() {
@@ -70,9 +86,9 @@ class DetailsViewModel(
         }
     }
 
-    fun startDownload() {
+    fun startDownload(url: String? = null) {
         uiState.value.detail?.let { detail ->
-            downloadRepository.enqueue(detail)
+            downloadRepository.enqueue(if (url == null) detail else detail.copy(downloadUrl = url))
             DownloadService.start(context)
         }
     }

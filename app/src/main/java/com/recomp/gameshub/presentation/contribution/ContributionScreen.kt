@@ -31,6 +31,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,6 +44,12 @@ import com.recomp.gameshub.core.designsystem.SectionHeader
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.domain.model.AuthState
 import com.recomp.gameshub.domain.model.SubmissionStatus
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -412,11 +421,10 @@ private fun GameSubmissionForm(
         originalPlatform: String?,
         author: String?,
         sourceRepo: String?,
-        apkUrl: String?,
-        fileSizeBytes: Long,
         tags: List<String>,
         coverUrl: String?,
         bannerUrl: String?,
+        screenshots: List<String>,
     ) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -427,11 +435,17 @@ private fun GameSubmissionForm(
     var platform by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var author by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var sourceRepo by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var apkUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var fileSizeText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var tagsText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var coverUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var bannerUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var screenshotsText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var aiJson by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var aiError by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val aiPrompt = """Você é um agente de pesquisa rigoroso. Acesse e investigue este repositório do GitHub: $sourceRepo
+Obtenha automaticamente, usando o conteúdo do repositório e as releases, os dados da recompilação Android: nome do jogo (pode ser o nome da recomp), descrição, plataforma original, autor da recompilação, URL exata do repositório, tags, URL da capa, URL do banner e URLs diretas de screenshots (se existirem). Não invente informações: use null ou [] quando não encontrar. Retorne SOMENTE um JSON válido, sem markdown, exatamente neste formato:
+{"name":"","description":"","platform":"","author":"","repository":"$sourceRepo","tags":[],"cover_url":null,"banner_url":null,"screenshots":[]}""".trimIndent()
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -486,23 +500,11 @@ private fun GameSubmissionForm(
             FormField(
                 value = sourceRepo,
                 onValueChange = { sourceRepo = it },
-                label = "Repositório do projeto (https://…)",
+                label = "Repositório GitHub (https://github.com/…) *",
                 singleLine = true,
             )
             Spacer(Modifier.height(10.dp))
-            FormField(
-                value = apkUrl,
-                onValueChange = { apkUrl = it },
-                label = "Link direto do APK (https://…) *",
-                singleLine = true,
-            )
-            Spacer(Modifier.height(10.dp))
-            FormField(
-                value = fileSizeText,
-                onValueChange = { fileSizeText = it },
-                label = "Tamanho do APK em bytes (opcional)",
-                singleLine = true,
-            )
+            Text("O APK, a versão, o autor e o tamanho serão obtidos automaticamente da release mais recente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             FormField(
                 value = tagsText,
@@ -524,6 +526,29 @@ private fun GameSubmissionForm(
                 label = "URL do banner 16:9 (https://…)",
                 singleLine = true,
             )
+            Spacer(Modifier.height(10.dp))
+            FormField(value = screenshotsText, onValueChange = { screenshotsText = it }, label = "URLs de screenshots (opcional, separadas por vírgula)", minLines = 2)
+
+            Spacer(Modifier.height(18.dp))
+            Text("Prompt de IA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Copie o prompt, cole na sua IA e depois cole o JSON retornado para preencher os campos.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { clipboard.setText(AnnotatedString(aiPrompt)); android.widget.Toast.makeText(context, "Prompt copiado", android.widget.Toast.LENGTH_SHORT).show() }, modifier = Modifier.fillMaxWidth()) { Text("Copiar prompt de IA") }
+            FormField(value = aiJson, onValueChange = { aiJson = it; aiError = null }, label = "Cole aqui o JSON retornado pela IA", minLines = 4)
+            aiError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            TextButton(onClick = {
+                runCatching {
+                    val obj = Json.parseToJsonElement(aiJson).jsonObject
+                    name = obj.stringValue("name")
+                    description = obj.stringValue("description")
+                    platform = obj.stringValue("platform")
+                    author = obj.stringValue("author")
+                    sourceRepo = obj.stringValue("repository").ifBlank { sourceRepo }
+                    tagsText = obj.arrayValue("tags").joinToString(", ")
+                    coverUrl = obj.nullableValue("cover_url")
+                    bannerUrl = obj.nullableValue("banner_url")
+                    screenshotsText = obj.arrayValue("screenshots").joinToString(", ")
+                }.onFailure { aiError = "JSON inválido: ${it.message ?: "verifique o formato"}" }
+            }) { Text("Preencher campos com JSON") }
 
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -538,14 +563,13 @@ private fun GameSubmissionForm(
                             platform.ifBlank { null },
                             author.ifBlank { null },
                             sourceRepo.ifBlank { null },
-                            apkUrl.ifBlank { null },
-                            fileSizeText.toLongOrNull() ?: 0L,
                             tagsText.split(",").map { it.trim() }.filter { it.isNotEmpty() },
                             coverUrl.ifBlank { null },
                             bannerUrl.ifBlank { null },
+                            screenshotsText.split(",").map { it.trim() }.filter { it.isNotBlank() },
                         )
                     },
-                    enabled = !isSubmitting && name.isNotBlank() && apkUrl.isNotBlank(),
+                    enabled = !isSubmitting && name.isNotBlank() && sourceRepo.isNotBlank(),
                     modifier = Modifier.weight(1f),
                 ) {
                     if (isSubmitting) {
@@ -558,6 +582,10 @@ private fun GameSubmissionForm(
         }
     }
 }
+
+private fun JsonObject.stringValue(key: String): String = this[key]?.jsonPrimitive?.contentOrNull ?: ""
+private fun JsonObject.nullableValue(key: String): String = stringValue(key)
+private fun JsonObject.arrayValue(key: String): List<String> = this[key]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
 
 @Composable
 private fun FormField(

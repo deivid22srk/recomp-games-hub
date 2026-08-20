@@ -15,6 +15,8 @@ val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orNull
     ?: ""
 val supabaseAnonKey = providers.gradleProperty("SUPABASE_ANON_KEY").orNull
     ?: System.getenv("SUPABASE_ANON_KEY")
+    ?: System.getenv("supa")
+    ?: System.getenv("supa2")
     ?: ""
 
 android {

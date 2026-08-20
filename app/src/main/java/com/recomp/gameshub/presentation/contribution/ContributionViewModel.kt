@@ -129,11 +129,10 @@ class ContributionViewModel(
         originalPlatform: String?,
         author: String?,
         sourceRepo: String?,
-        apkUrl: String?,
-        fileSizeBytes: Long,
         tags: List<String>,
         coverUrl: String?,
         bannerUrl: String?,
+        screenshots: List<String>,
     ) {
         if (_isSubmitting.value) return
         val slug = name.toSlugOrNull()
@@ -144,22 +143,29 @@ class ContributionViewModel(
         viewModelScope.launch {
             _isSubmitting.value = true
             _submitError.value = null
+            val repository = sourceRepo?.trim().orEmpty()
+            val release = contributionRepository.resolveLatestRelease(repository).getOrElse {
+                _submitError.value = it.message ?: "Não foi possível obter a release mais recente."
+                _isSubmitting.value = false
+                return@launch
+            }
             val submission = GameSubmission(
                 submissionId = "",
                 slug = slug,
                 name = name.trim(),
                 status = REVIEW_PENDING_RESULT,
                 devStatus = status.toDevStatus(),
-                version = version?.trim()?.takeIf { it.isNotBlank() },
+                version = version?.trim()?.takeIf { it.isNotBlank() } ?: release.version,
                 description = description.trim(),
                 originalPlatform = originalPlatform?.trim()?.takeIf { it.isNotBlank() },
-                author = author?.trim()?.takeIf { it.isNotBlank() },
-                sourceRepo = sourceRepo?.trim()?.takeIf { it.isNotBlank() },
-                apkUrl = apkUrl?.trim()?.takeIf { it.isNotBlank() },
-                fileSizeBytes = fileSizeBytes,
+                author = author?.trim()?.takeIf { it.isNotBlank() } ?: release.author,
+                sourceRepo = repository,
+                apkUrl = release.apk.downloadUrl,
+                fileSizeBytes = release.apk.size,
                 tags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
                 coverUrl = coverUrl?.trim()?.takeIf { it.isNotBlank() },
                 bannerUrl = bannerUrl?.trim()?.takeIf { it.isNotBlank() },
+                screenshots = screenshots.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
             )
             contributionRepository.submit(submission)
                 .onSuccess {
