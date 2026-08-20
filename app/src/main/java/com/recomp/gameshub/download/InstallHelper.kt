@@ -36,12 +36,38 @@ object InstallHelper {
         } catch (e: IllegalArgumentException) {
             Uri.fromFile(file)
         }
-        return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             data = uri
             type = "application/vnd.android.package-archive"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(Intent.EXTRA_RETURN_RESULT, false)
+        }
+        if (context.packageManager.resolveActivity(installIntent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
+            return installIntent
+        }
+
+        // Some Android builds do not register ACTION_INSTALL_PACKAGE. Their
+        // system installer still handles ACTION_VIEW, so target that activity
+        // explicitly to avoid the generic "Open with" chooser.
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            data = uri
+            type = "application/vnd.android.package-archive"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val installer = context.packageManager
+            .queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { info ->
+                val name = info.activityInfo.packageName.lowercase()
+                "packageinstaller" in name || "permissioncontroller" in name
+            }
+            ?: context.packageManager
+                .queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                .firstOrNull()
+        return if (installer != null) {
+            viewIntent.setPackage(installer.activityInfo.packageName)
+        } else {
+            viewIntent
         }
     }
 
