@@ -10,12 +10,19 @@ val dataOwner = "deivid22srk"
 val dataRepo = "recomp-games-data"
 val dataBranch = "main"
 
+val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orNull
+    ?: System.getenv("SUPABASE_URL")
+    ?: ""
+val supabaseAnonKey = providers.gradleProperty("SUPABASE_ANON_KEY").orNull
+    ?: System.getenv("SUPABASE_ANON_KEY")
+    ?: ""
+
 android {
     namespace = "com.recomp.gameshub"
     compileSdk = 35
 
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = rootProject.file("keystore/recomp-hub-debug.keystore")
             storePassword = "recomp123"
             keyAlias = "recomphub"
@@ -35,6 +42,8 @@ android {
         buildConfigField("String", "DATA_OWNER", "\"$dataOwner\"")
         buildConfigField("String", "DATA_REPO", "\"$dataRepo\"")
         buildConfigField("String", "DATA_BRANCH", "\"$dataBranch\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
     buildTypes {

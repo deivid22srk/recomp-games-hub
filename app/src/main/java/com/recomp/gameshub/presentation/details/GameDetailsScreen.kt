@@ -155,10 +155,13 @@ fun GameDetailsScreen(
 
 @Composable
 private fun resolved(detail: GameDetail, slug: String, path: String?): String? =
-    if (path.isNullOrBlank()) null
-    else "https://raw.githubusercontent.com/" +
-        "${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}/${BuildConfig.DATA_BRANCH}" +
-        "/games/$slug/$path"
+    when {
+        path.isNullOrBlank() -> null
+        path.startsWith("http://") || path.startsWith("https://") -> path
+        else -> "https://raw.githubusercontent.com/" +
+            "${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}/${BuildConfig.DATA_BRANCH}" +
+            "/games/$slug/$path"
+    }
 
 @Composable
 private fun HeroBanner(
