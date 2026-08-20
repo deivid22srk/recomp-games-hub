@@ -15,7 +15,6 @@ import com.recomp.gameshub.core.util.formatSpeed
 import com.recomp.gameshub.core.util.formatEtaSimple
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
-import java.io.File
 
 class DownloadNotifier(private val context: Context) {
 
@@ -168,8 +167,9 @@ class DownloadNotifier(private val context: Context) {
     }
 
     fun installPendingIntent(task: DownloadTask): PendingIntent {
-        val intent = InstallHelper.installIntent(context, File(task.localPath))
-        return PendingIntent.getActivity(
+        val intent = Intent(context, InstallStatusReceiver::class.java)
+            .putExtra(InstallStatusReceiver.EXTRA_INSTALL_PATH, task.localPath)
+        return PendingIntent.getBroadcast(
             context,
             requestCode("install", task.id),
             intent,

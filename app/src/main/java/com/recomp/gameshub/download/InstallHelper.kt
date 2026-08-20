@@ -50,11 +50,17 @@ object InstallHelper {
             val sessionId = installer.createSession(params)
             try {
                 installer.openSession(sessionId).use { session ->
-                    FileInputStream(file).use { input ->
-                        session.openWrite("base.apk", 0, file.length()).use { output ->
+                    val input = FileInputStream(file)
+                    try {
+                        val output = session.openWrite("base.apk", 0, file.length())
+                        try {
                             input.copyTo(output)
-                            output.fsync()
+                            session.fsync(output)
+                        } finally {
+                            output.close()
                         }
+                    } finally {
+                        input.close()
                     }
                     val callback = Intent(context, InstallStatusReceiver::class.java).apply {
                         putExtra(InstallStatusReceiver.EXTRA_SESSION_ID, sessionId)
