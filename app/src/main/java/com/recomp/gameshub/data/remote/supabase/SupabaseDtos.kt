@@ -64,3 +64,10 @@ data class AuthUserDto(
     val id: String,
     val email: String? = null,
 )
+
+@Serializable
+data class PromoteAdminDto(
+    val ok: Boolean = false,
+    val code: String = "",
+    val message: String? = null,
+)

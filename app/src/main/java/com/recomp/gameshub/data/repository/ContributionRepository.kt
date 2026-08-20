@@ -6,6 +6,7 @@ import com.recomp.gameshub.data.remote.supabase.SupabaseApi
 import com.recomp.gameshub.data.remote.supabase.toSubmission
 import com.recomp.gameshub.domain.model.AuthException
 import com.recomp.gameshub.domain.model.AuthState
+import com.recomp.gameshub.domain.model.AdminPromotionResult
 import com.recomp.gameshub.domain.model.GameSubmission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -89,6 +90,25 @@ class ContributionRepository(
         runCatching {
             val token = requireToken(admin = true)
             api.deleteOwnGame(slug, token)
+        }
+
+    // ---------- Admin management ----------
+
+    suspend fun promoteAdmin(email: String): Result<AdminPromotionResult> =
+        runCatching {
+            val token = requireToken()
+            val result = api.promoteAdmin(email, token)
+            AdminPromotionResult(
+                ok = result.ok,
+                code = result.code,
+                message = result.message ?: "Nenhuma resposta do servidor.",
+            )
+        }
+
+    suspend fun isPrincipalAdmin(): Result<Boolean> =
+        runCatching {
+            val token = requireToken()
+            api.isPrincipalAdmin(token)
         }
 
     private fun GameSubmission.toRow(): GameRow =

@@ -238,6 +238,40 @@ class SupabaseApi(
         ).firstOrNull()
     }
 
+    /**
+     * Promotes a user to ADM. Backend-enforced: only the principal admin may
+     * promote. Returns a structured result with ok/code/message instead of
+     * throwing on business errors.
+     */
+    suspend fun promoteAdmin(targetEmail: String, accessToken: String): PromoteAdminDto {
+        val payload = json.encodeToString(buildJsonObject { put("target_email", targetEmail) })
+        val text = raw(
+            "POST",
+            "/rest/v1/rpc/promote_to_admin",
+            headers = postgrestHeaders(accessToken),
+            body = jsonBody(payload),
+        )
+        return try {
+            json.decodeFromString<PromoteAdminDto>(text)
+        } catch (e: SerializationException) {
+            throw IOException("Resposta inesperada de promote_to_admin: ${text.take(200)}", e)
+        }
+    }
+
+    /**
+     * Whether the signed-in user is the principal admin. The principal is
+     * defined exclusively on the backend so it is never embedded in the app.
+     */
+    suspend fun isPrincipalAdmin(accessToken: String): Boolean {
+        val text = raw(
+            "POST",
+            "/rest/v1/rpc/is_principal_admin",
+            headers = postgrestHeaders(accessToken),
+            body = jsonBody("{}"),
+        )
+        return text.trim().toBooleanStrictOrNull() ?: text.contains("true")
+    }
+
     suspend fun insertGame(game: GameRow, accessToken: String, userId: String, screenshots: List<String> = emptyList()) {
         val payload = buildJsonObject {
             put("slug", game.slug)

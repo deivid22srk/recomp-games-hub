@@ -5,25 +5,47 @@ import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.data.repository.AuthRepository
 import com.recomp.gameshub.data.repository.ContributionRepository
 import com.recomp.gameshub.domain.model.GameSubmission
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+sealed interface AdminPromotionUiState {
+    data object Idle : AdminPromotionUiState
+    data object Loading : AdminPromotionUiState
+    data class Result(val ok: Boolean, val message: String) : AdminPromotionUiState
+}
+
+enum class PrincipalAdminStatus {
+    Unknown,
+    Loading,
+    Granted,
+    Denied,
+    Failed,
+}
+
+data class AdminActionState(
+    val inProgress: Boolean = false,
+    val error: String? = null,
+)
 
 data class AdminReviewUiState(
     val pending: List<GameSubmission> = emptyList(),
     val all: List<GameSubmission> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
+    val allError: String? = null,
     val successMessage: String? = null,
     val isAdmin: Boolean = false,
 )
 
 class AdminReviewViewModel(
     private val contributionRepository: ContributionRepository,
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private data class AdminLists(
@@ -31,17 +53,28 @@ class AdminReviewViewModel(
         val all: List<GameSubmission>,
     )
 
+    private var refreshJob: Job? = null
+    private var principalJob: Job? = null
+
     private val _pending = MutableStateFlow<List<GameSubmission>>(emptyList())
     private val _all = MutableStateFlow<List<GameSubmission>>(emptyList())
     private val _isLoading = MutableStateFlow(true)
     private val _error = MutableStateFlow<String?>(null)
+    private val _allError = MutableStateFlow<String?>(null)
     private val _successMessage = MutableStateFlow<String?>(null)
     private val _isAdmin = MutableStateFlow(authRepository.isAdmin.value)
+    private val _principalStatus = MutableStateFlow(PrincipalAdminStatus.Unknown)
+    private val _promotionState = MutableStateFlow<AdminPromotionUiState>(AdminPromotionUiState.Idle)
+    private val _actionStates = MutableStateFlow<Map<String, AdminActionState>>(emptyMap())
+
+    val principalStatus: StateFlow<PrincipalAdminStatus> = _principalStatus.asStateFlow()
+    val promotionState: StateFlow<AdminPromotionUiState> = _promotionState.asStateFlow()
+    val actionStates: StateFlow<Map<String, AdminActionState>> = _actionStates.asStateFlow()
 
     val uiState: StateFlow<AdminReviewUiState> = combine(
         combine(_pending, _all) { pending, all -> AdminLists(pending, all) },
-        combine(_isLoading, _error, _successMessage, _isAdmin) { loading, error, success, admin ->
-            AdminReviewUiState(isLoading = loading, error = error, successMessage = success, isAdmin = admin)
+        combine(_isLoading, _error, _allError, _successMessage, _isAdmin) { loading, error, allError, success, admin ->
+            AdminReviewUiState(isLoading = loading, error = error, allError = allError, successMessage = success, isAdmin = admin)
         },
     ) { lists, status ->
         AdminReviewUiState(
@@ -49,6 +82,7 @@ class AdminReviewViewModel(
             all = lists.all,
             isLoading = status.isLoading,
             error = status.error,
+            allError = status.allError,
             successMessage = status.successMessage,
             isAdmin = status.isAdmin,
         )
@@ -61,13 +95,15 @@ class AdminReviewViewModel(
                 if (admin) refresh()
             }
         }
-        refresh()
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            fetchPrincipalStatus()
             _isLoading.value = true
             _error.value = null
+            _allError.value = null
             contributionRepository.pendingSubmissions()
                 .onSuccess { _pending.value = it }
                 .onFailure {
@@ -76,51 +112,178 @@ class AdminReviewViewModel(
                 }
             _isLoading.value = false
             contributionRepository.allSubmissions()
-                .onSuccess { _all.value = it }
+                .onSuccess {
+                    _all.value = it
+                    _allError.value = null
+                }
+                .onFailure {
+                    _allError.value = it.message
+                }
         }
     }
 
-    fun approve(slug: String) {
+    /**
+     * The principal admin is defined exclusively on the backend, so the app
+     * asks the server whether the signed-in user is allowed to promote.
+     */
+    fun refreshPrincipalStatus() {
+        principalJob?.cancel()
+        principalJob = viewModelScope.launch {
+            fetchPrincipalStatus()
+        }
+    }
+
+    private suspend fun fetchPrincipalStatus() {
+        _principalStatus.value = PrincipalAdminStatus.Loading
+        contributionRepository.isPrincipalAdmin()
+            .onSuccess { granted ->
+                _principalStatus.value = if (granted) {
+                    PrincipalAdminStatus.Granted
+                } else {
+                    PrincipalAdminStatus.Denied
+                }
+            }
+            .onFailure {
+                _principalStatus.value = PrincipalAdminStatus.Failed
+            }
+    }
+
+    fun approve(slug: String, name: String) {
+        val key = "approve:$slug"
+        if (_actionStates.value[key]?.inProgress == true) return
+        beginAction(key)
         viewModelScope.launch {
             contributionRepository.approve(slug)
                 .onSuccess {
-                    _successMessage.value = "Aprovado: $slug"
+                    removeAction(key)
+                    _successMessage.value = "«$name» aprovada e publicada."
                     _pending.value = _pending.value.filterNot { it.slug == slug }
+                    _all.value = _all.value.map { sub ->
+                        if (sub.slug == slug) sub.copy(status = STATUS_APPROVED, reviewReason = null) else sub
+                    }
                 }
-                .onFailure { _error.value = it.message }
+                .onFailure {
+                    failAction(key, it.message ?: "Não foi possível aprovar a contribuição.")
+                }
         }
     }
 
-    fun reject(slug: String, reason: String) {
+    fun reject(slug: String, name: String, reason: String) {
+        val key = "reject:$slug"
+        if (_actionStates.value[key]?.inProgress == true) return
+        beginAction(key)
         viewModelScope.launch {
             contributionRepository.reject(slug, reason)
                 .onSuccess {
-                    _successMessage.value = "Rejeitado: $slug"
+                    succeedAction(key)
+                    _successMessage.value = "«$name» rejeitada."
                     _pending.value = _pending.value.filterNot { it.slug == slug }
+                    _all.value = _all.value.map { sub ->
+                        if (sub.slug == slug) {
+                            sub.copy(
+                                status = STATUS_REJECTED,
+                                reviewReason = reason.trim().takeIf { it.isNotBlank() },
+                            )
+                        } else {
+                            sub
+                        }
+                    }
                 }
-                .onFailure { _error.value = it.message }
+                .onFailure {
+                    failAction(key, it.message ?: "Não foi possível rejeitar a contribuição.")
+                }
         }
     }
 
-    fun update(game: GameSubmission) {
+    fun update(originalSlug: String, game: GameSubmission) {
+        val key = "update:$originalSlug"
+        if (_actionStates.value[key]?.inProgress == true) return
+        beginAction(key)
         viewModelScope.launch {
             contributionRepository.adminUpdate(game.slug, game)
                 .onSuccess {
+                    succeedAction(key)
                     _successMessage.value = "Contribuição atualizada."
                     refresh()
                 }
-                .onFailure { _error.value = it.message }
+                .onFailure {
+                    failAction(key, it.message ?: "Não foi possível atualizar a contribuição.")
+                }
         }
     }
 
     fun delete(slug: String) {
+        val key = "delete:$slug"
+        if (_actionStates.value[key]?.inProgress == true) return
+        beginAction(key)
         viewModelScope.launch {
             contributionRepository.adminDelete(slug)
                 .onSuccess {
+                    succeedAction(key)
                     _successMessage.value = "Contribuição excluída."
                     refresh()
                 }
-                .onFailure { _error.value = it.message }
+                .onFailure {
+                    failAction(key, it.message ?: "Não foi possível excluir a contribuição.")
+                }
         }
+    }
+
+    fun clearAction(key: String) {
+        _actionStates.value = _actionStates.value - key
+    }
+
+    private fun removeAction(key: String) {
+        _actionStates.value = _actionStates.value - key
+    }
+
+    private fun beginAction(key: String) {
+        _actionStates.value = _actionStates.value + (key to AdminActionState(inProgress = true))
+    }
+
+    private fun succeedAction(key: String) {
+        _actionStates.value = _actionStates.value + (key to AdminActionState(inProgress = false))
+    }
+
+    private fun failAction(key: String, message: String?) {
+        _actionStates.value = _actionStates.value + (key to AdminActionState(error = message))
+    }
+
+    fun promote(email: String) {
+        if (_promotionState.value is AdminPromotionUiState.Loading) return
+        _promotionState.value = AdminPromotionUiState.Loading
+        viewModelScope.launch {
+            contributionRepository.promoteAdmin(email)
+                .onSuccess { result ->
+                    _promotionState.value = AdminPromotionUiState.Result(
+                        ok = result.ok,
+                        message = result.message,
+                    )
+                }
+                .onFailure { throwable ->
+                    _promotionState.value = AdminPromotionUiState.Result(
+                        ok = false,
+                        message = throwable.message ?: "Não foi possível promover o usuário.",
+                    )
+                }
+        }
+    }
+
+    fun dismissPromotion() {
+        _promotionState.value = AdminPromotionUiState.Idle
+    }
+
+    fun dismissMessages() {
+        _successMessage.value = null
+        _error.value = null
+    }
+
+    fun dismissAllError() {
+        _allError.value = null
+    }
+
+    companion object {
+        private const val STATUS_APPROVED = "approved"
+        private const val STATUS_REJECTED = "rejected"
     }
 }

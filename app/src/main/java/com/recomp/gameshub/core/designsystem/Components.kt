@@ -31,7 +31,10 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +57,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +73,7 @@ import com.recomp.gameshub.core.util.percentage
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.domain.model.GameStatus
+import com.recomp.gameshub.domain.model.SubmissionStatus
 
 @Composable
 fun shimmerColor(): Color {
@@ -256,16 +262,92 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun InfoBanner(message: String, isError: Boolean) {
+fun InfoBanner(
+    message: String,
+    isError: Boolean,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    onDismiss: (() -> Unit)? = null,
+) {
     val color = if (isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
     val onColor = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
-    Surface(color = color, shape = MaterialTheme.shapes.medium) {
-        Text(
-            message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = onColor,
-            modifier = Modifier.padding(12.dp),
-        )
+    Surface(
+        color = color,
+        contentColor = onColor,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                vertical = 12.dp,
+                horizontal = if (onDismiss != null) 6.dp else 12.dp,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (leadingIcon != null) {
+                Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = onColor,
+                modifier = Modifier.weight(1f),
+            )
+            if (onDismiss != null) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Fechar",
+                        tint = onColor,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SubmissionStatusChip(status: SubmissionStatus) {
+    val container = when (status) {
+        SubmissionStatus.APPROVED -> MaterialTheme.colorScheme.primaryContainer
+        SubmissionStatus.REJECTED -> MaterialTheme.colorScheme.errorContainer
+        SubmissionStatus.PENDING -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when (status) {
+        SubmissionStatus.APPROVED -> MaterialTheme.colorScheme.onPrimaryContainer
+        SubmissionStatus.REJECTED -> MaterialTheme.colorScheme.onErrorContainer
+        SubmissionStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val icon = when (status) {
+        SubmissionStatus.APPROVED -> Icons.Rounded.CheckCircle
+        SubmissionStatus.REJECTED -> Icons.Rounded.ErrorOutline
+        SubmissionStatus.PENDING -> Icons.Rounded.Schedule
+    }
+    Surface(
+        color = container,
+        contentColor = content,
+        shape = RoundedCornerShape(50),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
+            Text(
+                text = status.label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = content,
+            )
+        }
     }
 }
 

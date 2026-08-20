@@ -24,5 +24,13 @@ data class GameSubmission(
 enum class SubmissionStatus(val label: String) {
     PENDING("Pendente de revisão"),
     APPROVED("Aprovado e publicado"),
-    REJECTED("Rejeitado"),
+    REJECTED("Rejeitado");
+
+    companion object {
+        fun fromRaw(value: String): SubmissionStatus = when (value) {
+            "approved" -> APPROVED
+            "rejected" -> REJECTED
+            else -> PENDING
+        }
+    }
 }

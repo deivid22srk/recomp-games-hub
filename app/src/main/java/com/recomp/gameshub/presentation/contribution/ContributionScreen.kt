@@ -32,7 +32,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -42,7 +41,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Logout
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -98,6 +96,7 @@ import com.recomp.gameshub.core.designsystem.ErrorStateBox
 import com.recomp.gameshub.core.designsystem.GameCoverImage
 import com.recomp.gameshub.core.designsystem.InfoBanner
 import com.recomp.gameshub.core.designsystem.ShimmerBox
+import com.recomp.gameshub.core.designsystem.SubmissionStatusChip
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.domain.model.AuthState
 import com.recomp.gameshub.domain.model.GameSubmission
@@ -625,11 +624,7 @@ private fun SubmissionCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val status = when (submission.status) {
-        "approved" -> SubmissionStatus.APPROVED
-        "rejected" -> SubmissionStatus.REJECTED
-        else -> SubmissionStatus.PENDING
-    }
+    val status = SubmissionStatus.fromRaw(submission.status)
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
@@ -726,35 +721,6 @@ private fun SubmissionCard(
                     Text("Excluir")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SubmissionStatusChip(status: SubmissionStatus) {
-    val container = when (status) {
-        SubmissionStatus.APPROVED -> MaterialTheme.colorScheme.primaryContainer
-        SubmissionStatus.REJECTED -> MaterialTheme.colorScheme.errorContainer
-        SubmissionStatus.PENDING -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val content = when (status) {
-        SubmissionStatus.APPROVED -> MaterialTheme.colorScheme.onPrimaryContainer
-        SubmissionStatus.REJECTED -> MaterialTheme.colorScheme.onErrorContainer
-        SubmissionStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val icon = when (status) {
-        SubmissionStatus.APPROVED -> Icons.Rounded.CheckCircle
-        SubmissionStatus.REJECTED -> Icons.Rounded.ErrorOutline
-        SubmissionStatus.PENDING -> Icons.Rounded.Schedule
-    }
-    Surface(color = container, shape = RoundedCornerShape(50)) {
-        Row(
-            modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
-            Text(status.label, style = MaterialTheme.typography.labelMedium, color = content)
         }
     }
 }
