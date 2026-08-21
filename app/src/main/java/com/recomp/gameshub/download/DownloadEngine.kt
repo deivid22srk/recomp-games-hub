@@ -149,15 +149,19 @@ class DownloadEngine(
             }
 
             val isResumed = resp.code == 206
-            var total = task.totalBytes
-
-            if (total == 0L) {
-                val contentRange = resp.header("Content-Range")
-                val parsed = contentRange?.let { parseContentRange(it) }
-                total = parsed ?: run {
-                    val serverContentLength = resp.body?.contentLength() ?: -1L
-                    if (isResumed && serverContentLength > 0L) start + serverContentLength else 0L
-                }
+            // O tamanho real vem sempre do servidor: o catálogo pode descrever outra
+            // versão do jogo, o que fazia o progresso estourar 100% e falhar no fim
+            // ao baixar versões antigas.
+            val contentRangeTotal = resp.header("Content-Range")?.let { parseContentRange(it) }
+            val contentLength = resp.body?.contentLength() ?: -1L
+            val serverTotal = contentRangeTotal ?: when {
+                !isResumed && contentLength > 0L -> contentLength
+                isResumed && contentLength > 0L -> start + contentLength
+                else -> -1L
+            }
+            val total = if (serverTotal > 0L) serverTotal else task.totalBytes
+            if (serverTotal > 0L && serverTotal != task.totalBytes) {
+                repository.resolveTotal(id, serverTotal)
             }
 
             val raf = RandomAccessFile(file, "rw")

@@ -115,9 +115,10 @@ class DetailsViewModel(
         }
     }
 
-    fun startDownload(url: String? = null) {
+    fun startDownload(url: String? = null, sizeBytes: Long? = null) {
         uiState.value.detail?.let { detail ->
-            downloadRepository.enqueue(if (url == null) detail else detail.copy(downloadUrl = url))
+            val enriched = if (url == null) detail else detail.copy(downloadUrl = url)
+            downloadRepository.enqueue(enriched, sizeBytes)
             DownloadService.start(context)
         }
     }

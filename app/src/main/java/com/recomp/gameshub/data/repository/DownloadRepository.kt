@@ -70,18 +70,21 @@ class DownloadRepository(
         onChanged?.invoke()
     }
 
-    fun enqueue(detail: GameDetail): DownloadTask {
+    fun enqueue(detail: GameDetail, expectedSizeBytes: Long? = null): DownloadTask {
         val slug = detail.summary.slug
         val url = detail.downloadUrl ?: return _tasks.value[slug] ?: noUrlTask()
         val existing = _tasks.value[slug]
         if (existing != null && existing.isActive) return existing
-        if (existing != null && existing.phase == DownloadPhase.PAUSED) {
+        // Retomar só é seguro com o mesmo artefato; ao trocar de versão o arquivo
+        // parcial seria misturado por causa do Range, então recomeça do zero.
+        val sameArtifact = existing != null && existing.url == url
+        if (existing != null && existing.phase == DownloadPhase.PAUSED && sameArtifact) {
             resume(existing.id, url)
             return _tasks.value[slug]!!
         }
         val fileName = fileNameFor(detail)
         val file = File(downloadsDir, fileName)
-        if (existing != null && existing.phase == DownloadPhase.COMPLETED) {
+        if (!sameArtifact || existing?.phase == DownloadPhase.COMPLETED) {
             file.delete()
         }
         val task = DownloadTask(
@@ -90,8 +93,8 @@ class DownloadRepository(
             url = url,
             localPath = file.absolutePath,
             fileName = fileName,
-            totalBytes = detail.fileSizeBytes,
-            downloadedBytes = if (file.exists()) file.length() else 0L,
+            totalBytes = expectedSizeBytes ?: detail.fileSizeBytes,
+            downloadedBytes = if (sameArtifact && file.exists()) file.length() else 0L,
             phase = DownloadPhase.PENDING,
             addedAt = System.currentTimeMillis(),
         )
@@ -175,9 +178,10 @@ class DownloadRepository(
     }
 
     fun resolveTotal(id: String, total: Long) {
+        if (total <= 0L) return
         _tasks.update { map ->
             val current = map[id] ?: return@update map
-            if (current.totalBytes == 0L) map + (id to current.copy(totalBytes = total)) else map
+            if (current.totalBytes == total) map else map + (id to current.copy(totalBytes = total))
         }
         persist(id)
     }

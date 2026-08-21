@@ -159,7 +159,11 @@ fun GameDetailsScreen(
                 DetailBottomBar(
                     task = downloadTask,
                     installState = installState,
-                    onStart = { if (releases.size > 1) showReleasePicker = true else viewModel.startDownload(releases.firstOrNull()?.apk?.downloadUrl) },
+                    onStart = {
+                        val latest = releases.firstOrNull()
+                        if (releases.size > 1) showReleasePicker = true
+                        else viewModel.startDownload(latest?.apk?.downloadUrl, latest?.apk?.size)
+                    },
                     onPause = viewModel::pause,
                     onResume = viewModel::resume,
                     onCancel = viewModel::cancel,
@@ -176,7 +180,10 @@ fun GameDetailsScreen(
             ReleasePickerDialog(
                 releases = releases,
                 onDismiss = { showReleasePicker = false },
-                onSelect = { release -> showReleasePicker = false; viewModel.startDownload(release.apk.downloadUrl) },
+                onSelect = { release ->
+                    showReleasePicker = false
+                    viewModel.startDownload(release.apk.downloadUrl, release.apk.size)
+                },
             )
         }
     }
