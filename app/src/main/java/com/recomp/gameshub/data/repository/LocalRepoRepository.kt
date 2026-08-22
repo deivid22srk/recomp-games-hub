@@ -148,7 +148,6 @@ class LocalRepoRepository(
 
     private fun slugify(value: String): String =
         value.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-')
-    }
 
     /** Remove um jogo do repositório local. */
     suspend fun removeLocalGame(dir: File, slug: String): Result<Unit> = withContext(Dispatchers.IO) {
