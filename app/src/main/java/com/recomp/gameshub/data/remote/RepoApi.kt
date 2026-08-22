@@ -19,6 +19,12 @@ data class RepoManifestDto(
     val name: String? = null,
 )
 
+@Serializable
+data class RepoIndexDto(
+    val generated: String? = null,
+    val games: List<IndexEntryDto> = emptyList(),
+)
+
 /**
  * Lê dados de um repositório de dados do Recomp Hub.
  *
@@ -39,7 +45,7 @@ class RepoApi(
 
     suspend fun fetchIndex(config: RepoConfig): List<IndexEntryDto> =
         readJson(config, indexFileName) { body ->
-            json.decodeFromString<IndexDto>(body).games
+            json.decodeFromString<RepoIndexDto>(body).games
         }
 
     suspend fun fetchMetadata(config: RepoConfig, slug: String): GameMetadataDto =

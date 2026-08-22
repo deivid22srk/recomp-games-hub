@@ -77,13 +77,15 @@ fun SetupRoute(onComplete: () -> Unit) {
         if (state is SetupUiState.Done) onComplete()
     }
 
+    val context = LocalContext.current
+
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
     var notificationGranted by remember { mutableStateOf(
         if (Build.VERSION.SDK_INT < 33) true else
             ContextCompat.checkSelfPermission(
-                LocalContext.current, Manifest.permission.POST_NOTIFICATIONS
+                context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
     ) }
     LaunchedEffect(Unit) {
@@ -96,7 +98,6 @@ fun SetupRoute(onComplete: () -> Unit) {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            val context = LocalContext.current
             val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, flags)
             viewModel.onLocalPathPicked(uri.toString())

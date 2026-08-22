@@ -73,6 +73,8 @@ import com.recomp.gameshub.core.util.formatBytes
 import com.recomp.gameshub.core.util.percentage
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
+import com.recomp.gameshub.domain.model.GameStatus
+
 
 @Composable
 fun shimmerColor(): Color {
@@ -310,7 +312,210 @@ fun InfoBanner(
             }
         }
     }
-}fun DeleteDownloadsTextButton(onDelete: () -> Unit) {
+}
+
+fun DownloadControl(
+    task: DownloadTask?,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    onInstall: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+    downloadEnabled: Boolean = true,
+    installLabel: String = "Instalar",
+) {
+    val phase = task?.phase
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                when (phase) {
+                    null, DownloadPhase.CANCELLED -> {
+                        if (downloadEnabled) {
+                            StartButton(task, onStart)
+                        } else {
+                            NoLinkButton()
+                        }
+                    }
+                    DownloadPhase.PENDING, DownloadPhase.DOWNLOADING -> ProgressButton(task)
+                    DownloadPhase.PAUSED -> ResumeButton(onResume)
+                    DownloadPhase.COMPLETED -> InstallButton(task, onInstall, installLabel)
+                    DownloadPhase.FAILED -> RetryButton(task, onRetry)
+                }
+            }
+            AnimatedVisibility(
+                visible = phase == DownloadPhase.DOWNLOADING || phase == DownloadPhase.PENDING,
+                enter = fadeIn() + slideInVertically { it / 2 },
+                exit = fadeOut() + slideOutVertically { it / 2 },
+            ) {
+                PauseButton(phase == DownloadPhase.DOWNLOADING, onPause)
+            }
+            AnimatedVisibility(
+                visible = phase == DownloadPhase.DOWNLOADING || phase == DownloadPhase.PENDING,
+                enter = fadeIn() + slideInVertically { it / 2 },
+                exit = fadeOut() + slideOutVertically { it / 2 },
+            ) {
+                CancelButton(onCancel)
+            }
+        }
+        AnimatedVisibility(
+            visible = phase == DownloadPhase.FAILED,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Text(
+                text = task?.errorMessage ?: "Falha no download",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoLinkButton() {
+    FilledTonalButton(
+        onClick = {},
+        enabled = false,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Text(
+            "Sem link de download",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun StartButton(task: DownloadTask?, onStart: () -> Unit) {
+    Button(
+        onClick = onStart,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Baixar", style = MaterialTheme.typography.titleMedium)
+        if (task != null && task.totalBytes > 0L) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "• ${formatBytes(task.totalBytes)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                fontWeight = FontWeight.Normal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProgressButton(task: DownloadTask?) {
+    val percent = percentage(task ?: return)
+    FilledTonalButton(
+        onClick = {},
+        enabled = false,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            disabledContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            disabledContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(20.dp),
+            strokeWidth = 2.5.dp,
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            progress = { task.progress },
+        )
+        Spacer(Modifier.width(10.dp))
+        val labelText = if (task.totalBytes > 0L) "$percent%" else "Baixando…"
+        Text(labelText, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun ResumeButton(onResume: () -> Unit) {
+    Button(
+        onClick = onResume,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Retomar", style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun RetryButton(task: DownloadTask?, onRetry: () -> Unit) {
+    Button(
+        onClick = onRetry,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Tentar novamente", style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit, label: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = onInstall,
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "• pronto",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PauseButton(active: Boolean, onPause: () -> Unit) {
+    FilledTonalIconButton(
+        onClick = onPause,
+        modifier = Modifier.size(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(Icons.Filled.Pause, contentDescription = "Pausar")
+    }
+}
+
+@Composable
+private fun CancelButton(onCancel: () -> Unit) {
+    FilledTonalIconButton(
+        onClick = onCancel,
+        modifier = Modifier.size(54.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(Icons.Filled.Close, contentDescription = "Cancelar")
+    }
+}
+
+@Composable
+fun DeleteDownloadsTextButton(onDelete: () -> Unit) {
     TextButton(onClick = onDelete) {
         Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(4.dp))

@@ -3,7 +3,7 @@ package com.recomp.gameshub.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.data.repository.AppSettings
-import com.recomp.gameshub.data.repository.RepoManager
+import com.recomp.gameshub.data.repository.RepoRepository
 import com.recomp.gameshub.data.repository.SettingsRepository
 import com.recomp.gameshub.data.repository.ThemeMode
 import com.recomp.gameshub.domain.model.RepoConfig
@@ -14,13 +14,13 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val repository: SettingsRepository,
-    repoManager: RepoManager,
+    private val repoRepository: RepoRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
-    val repoConfig: StateFlow<RepoConfig?> = repoManager.config()
+    val repoConfig: StateFlow<RepoConfig?> = repoRepository.config
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setThemeMode(mode: ThemeMode) {

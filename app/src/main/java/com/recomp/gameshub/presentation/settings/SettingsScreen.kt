@@ -58,7 +58,7 @@ fun SettingsRoute(
     onOpenDownloads: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = appViewModel {
-        SettingsViewModel(it.settingsRepository, it.repoManager)
+        SettingsViewModel(it.settingsRepository, it.repoRepository)
     }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val repoConfig by viewModel.repoConfig.collectAsStateWithLifecycle()

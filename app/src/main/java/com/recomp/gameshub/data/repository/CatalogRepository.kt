@@ -2,6 +2,7 @@ package com.recomp.gameshub.data.repository
 
 import com.recomp.gameshub.data.local.GameDao
 import com.recomp.gameshub.data.local.toDetail
+import com.recomp.gameshub.data.local.toEntity
 import com.recomp.gameshub.data.local.toSummary
 import com.recomp.gameshub.domain.model.GameDetail
 import com.recomp.gameshub.domain.model.GameSummary
@@ -29,7 +30,7 @@ class CatalogRepository(
     suspend fun refresh(): Result<Int> = withContext(Dispatchers.IO) {
         val config = repoManager.config()
         if (config == null) {
-            runCatching { repoManager.setupInitial(defaultConfig()) }
+            repoManager.setupInitial(defaultConfig())
         } else {
             repoManager.applyUpdate()
         }
