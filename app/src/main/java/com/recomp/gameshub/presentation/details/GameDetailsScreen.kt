@@ -74,6 +74,7 @@ import com.recomp.gameshub.core.designsystem.SectionHeader
 import com.recomp.gameshub.core.designsystem.ShimmerBox
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.core.util.formatBytes
+import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.GameDetail
 import com.recomp.gameshub.domain.model.GameInstallState
 import com.recomp.gameshub.data.remote.GithubRelease
@@ -620,29 +621,16 @@ private fun DetailBottomBar(
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 14.dp),
     ) {
-        if (task != null) {
-            DownloadControl(
-                task = task,
-                onStart = onStart,
-                onPause = onPause,
-                onResume = onResume,
-                onCancel = onCancel,
-                onRetry = onRetry,
-                onInstall = onInstall,
-                onDelete = onDelete,
-                downloadEnabled = downloadEnabled,
-            )
-        } else {
-            when (val state = installState) {
-                is GameInstallState.Installed -> {
-                    if (state.isUpToDate) {
-                        InstalledStatusBar(state = state, onOpenGame = onOpenGame)
-                    } else {
-                        UpdateStatusBar(state = state, onUpdate = onStart, onOpenGame = onOpenGame)
-                    }
+        val installedState = installState as? GameInstallState.Installed
+        if (task != null && !(installedState != null &&
+                installedState.isUpToDate && task.phase == DownloadPhase.COMPLETED)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (installedState != null && !installedState.isUpToDate) {
+                    UpdateBanner(state = installedState)
                 }
-                else -> DownloadControl(
-                    task = null,
+                DownloadControl(
+                    task = task,
                     onStart = onStart,
                     onPause = onPause,
                     onResume = onResume,
@@ -652,7 +640,44 @@ private fun DetailBottomBar(
                     onDelete = onDelete,
                     downloadEnabled = downloadEnabled,
                 )
+                // Durante uma atualização o jogo continua utilizável:
+                // mantém o acesso rápido ao app já instalado.
+                if (installedState != null) {
+                    FilledTonalButton(
+                        onClick = onOpenGame,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Abrir app")
+                    }
+                }
             }
+        } else if (installedState != null) {
+            if (installedState.isUpToDate) {
+                InstalledStatusBar(state = installedState, onOpenGame = onOpenGame)
+            } else {
+                UpdateStatusBar(state = installedState, onUpdate = onStart, onOpenGame = onOpenGame)
+            }
+        } else {
+            DownloadControl(
+                task = null,
+                onStart = onStart,
+                onPause = onPause,
+                onResume = onResume,
+                onCancel = onCancel,
+                onRetry = onRetry,
+                onInstall = onInstall,
+                onDelete = onDelete,
+                downloadEnabled = downloadEnabled,
+            )
         }
     }
 }
@@ -718,41 +743,7 @@ private fun UpdateStatusBar(
     onOpenGame: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(
-            color = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.SystemUpdate,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Column {
-                    Text(
-                        text = "Atualização disponível",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    val latest = state.latestVersion
-                    Text(
-                        text = buildString {
-                            append("Instalada v${state.displayVersion}")
-                            if (!latest.isNullOrBlank()) {
-                                append("  →  v${latest.removePrefix("v").removePrefix("V")}")
-                            }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
+        UpdateBanner(state = state)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = onUpdate,
@@ -778,6 +769,45 @@ private fun UpdateStatusBar(
                     modifier = Modifier.size(18.dp),
                 )
                 Text("Abrir")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateBanner(state: GameInstallState.Installed) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.SystemUpdate,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Column {
+                Text(
+                    text = "Atualização disponível",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                val latest = state.latestVersion
+                Text(
+                    text = buildString {
+                        append("Instalada v${state.displayVersion}")
+                        if (!latest.isNullOrBlank()) {
+                            append("  →  v${latest.removePrefix("v").removePrefix("V")}")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
