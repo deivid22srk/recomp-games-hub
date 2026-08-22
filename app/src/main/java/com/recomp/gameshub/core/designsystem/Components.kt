@@ -314,6 +314,7 @@ fun InfoBanner(
     }
 }
 
+@Composable
 fun DownloadControl(
     task: DownloadTask?,
     onStart: () -> Unit,
