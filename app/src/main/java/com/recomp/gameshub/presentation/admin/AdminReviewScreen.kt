@@ -71,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -815,8 +816,10 @@ private fun AppUpdateCard(
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    TextButton(onClick = { onRemoveClick(current.id ?: "") }) {
-                                        Text("Remover", color = MaterialTheme.colorScheme.error)
+                                    if (current.id != null) {
+                                        TextButton(onClick = { onRemoveClick(current.id) }) {
+                                            Text("Remover", color = MaterialTheme.colorScheme.error)
+                                        }
                                     }
                                 }
                                 current.publishedAt?.let { date ->

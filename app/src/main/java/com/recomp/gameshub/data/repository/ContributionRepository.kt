@@ -146,6 +146,7 @@ class ContributionRepository(
         }
 
     private fun AppReleaseRow.toUpdateInfo() = AppUpdateInfo(
+        id = id,
         versionCode = versionCode,
         versionName = versionName,
         downloadUrl = downloadUrl,

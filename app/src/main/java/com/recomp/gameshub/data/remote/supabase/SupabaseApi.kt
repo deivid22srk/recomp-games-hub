@@ -279,7 +279,7 @@ class SupabaseApi(
      * Public read (RLS: select for everyone), ordered by the highest version code.
      */
     suspend fun fetchLatestAppRelease(): AppReleaseRow? =
-        selectRows(
+        selectRows<AppReleaseRow>(
             APP_RELEASES_TABLE,
             filter = "id=not.is.null",
             select = "id,version_code,version_name,download_url,notes,published_by,created_at",
