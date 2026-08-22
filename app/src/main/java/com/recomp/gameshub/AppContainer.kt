@@ -3,14 +3,13 @@ package com.recomp.gameshub
 import android.content.Context
 import androidx.room.Room
 import com.recomp.gameshub.data.local.AppDatabase
-import com.recomp.gameshub.data.remote.CatalogApi
 import com.recomp.gameshub.data.remote.GithubReleaseApi
-import com.recomp.gameshub.data.remote.supabase.SupabaseApi
-import com.recomp.gameshub.data.repository.AuthRepository
+import com.recomp.gameshub.data.remote.RepoApi
 import com.recomp.gameshub.data.repository.CatalogRepository
-import com.recomp.gameshub.data.repository.ContributionRepository
 import com.recomp.gameshub.data.repository.DownloadRepository
 import com.recomp.gameshub.data.repository.InstalledGamesRepository
+import com.recomp.gameshub.data.repository.RepoManager
+import com.recomp.gameshub.data.repository.RepoRepository
 import com.recomp.gameshub.data.repository.SettingsRepository
 import com.recomp.gameshub.download.DownloadEngine
 import kotlinx.coroutines.CoroutineScope
@@ -35,18 +34,17 @@ class AppContainer(
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    val supabaseApi = SupabaseApi(networkClient)
-    val catalogApi = CatalogApi(networkClient)
-    val githubReleaseApi = GithubReleaseApi(networkClient)
+    val repoApi = RepoApi(networkClient)
+    val repoRepository = RepoRepository(app)
     val settingsRepository = SettingsRepository(app)
-    val authRepository = AuthRepository(app, supabaseApi)
-    val catalogRepository = CatalogRepository(supabaseApi, catalogApi, database.gameDao())
-    val contributionRepository = ContributionRepository(supabaseApi, authRepository, githubReleaseApi)
+    val githubReleaseApi = GithubReleaseApi(networkClient)
 
     val downloadsDir: File = File(app.filesDir, "downloads").apply {
         if (!exists()) mkdirs()
     }
 
+    val repoManager = RepoManager(repoRepository, repoApi, database.gameDao())
+    val catalogRepository = CatalogRepository(database.gameDao(), repoManager)
     val downloadRepository = DownloadRepository(database.downloadDao(), downloadsDir, appScope)
     val downloadEngine = DownloadEngine(downloadRepository, networkClient)
     val installedGamesRepository = InstalledGamesRepository(database.installedGamesDao())

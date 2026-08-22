@@ -16,16 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material.icons.rounded.Verified
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,12 +32,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,17 +56,12 @@ fun SettingsRoute(
     onBack: () -> Unit,
     onOpenCatalog: () -> Unit,
     onOpenDownloads: () -> Unit,
-    onOpenContribution: () -> Unit,
-    onOpenAdminReview: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = appViewModel {
-        SettingsViewModel(it.settingsRepository, it.authRepository)
+        SettingsViewModel(it.settingsRepository, it.repoManager)
     }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val authState by viewModel.authState.collectAsStateWithLifecycle()
-    val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
-    var showContributionDialog by remember { mutableStateOf(false) }
-    val connectedUser = (authState as? com.recomp.gameshub.domain.model.AuthState.SignedIn)?.user
+    val repoConfig by viewModel.repoConfig.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -188,7 +175,7 @@ fun SettingsRoute(
             }
 
             item {
-                SectionHeader("Comunidade", Modifier.padding(top = 16.dp))
+                SectionHeader("Fonte de dados", Modifier.padding(top = 16.dp))
             }
             item {
                 Surface(
@@ -197,59 +184,24 @@ fun SettingsRoute(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
-                        modifier = Modifier
-                            .clickable { showContributionDialog = true }
-                            .padding(16.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.AddCircle,
+                            imageVector = Icons.Rounded.Storage,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                         )
                         Spacer(Modifier.size(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Contribuir com um jogo", style = MaterialTheme.typography.titleSmall)
+                            Text("Repositório do catálogo", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (connectedUser != null) {
-                                    "Envie recompilações para o catálogo"
-                                } else {
-                                    "Entre ou crie uma conta para participar"
-                                },
+                                text = repoConfig?.displayName ?: "Não configurado",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                    }
-                }
-            }
-            if (isAdmin) {
-                item {
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = MaterialTheme.shapes.large,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .clickable { onOpenAdminReview() }
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Verified,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(Modifier.size(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Moderação", style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    "Revisar contribuições pendentes",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                         }
                     }
                 }
@@ -265,8 +217,10 @@ fun SettingsRoute(
                 LinkRow(
                     icon = Icons.Rounded.Storage,
                     title = "Banco de dados do catálogo",
-                    subtitle = "github.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}",
-                    url = "https://github.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}",
+                    subtitle = repoConfig?.let { "github.com/${it.owner}/${it.repo}" }
+                        ?: "github.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}",
+                    url = repoConfig?.let { "https://github.com/${it.owner}/${it.repo}" }
+                        ?: "https://github.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}",
                 )
             }
             item {
@@ -302,32 +256,6 @@ fun SettingsRoute(
             }
             item { Spacer(Modifier.height(8.dp)) }
         }
-    }
-
-    if (showContributionDialog) {
-        AlertDialog(
-            onDismissRequest = { showContributionDialog = false },
-            icon = {
-                Icon(Icons.Rounded.AddCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            },
-            title = { Text("Contribuir com um jogo") },
-            text = {
-                Text(
-                    "Documente recompilações de jogos clássicos que ainda não estão no catálogo. " +
-                        "Você informa os dados e os links do jogo; o envio passa por revisão da equipe " +
-                        "antes de ser publicado para todos. É preciso entrar com uma conta para enviar."
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showContributionDialog = false
-                    onOpenContribution()
-                }) { Text("Continuar") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showContributionDialog = false }) { Text("Agora não") }
-            },
-        )
     }
 }
 

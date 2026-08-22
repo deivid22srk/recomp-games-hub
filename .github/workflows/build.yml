@@ -43,18 +43,15 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
       - name: Verify backend configured
         run: |
           APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
           echo "APK: $APK"
-          if unzip -p "$APK" "classes*.dex" | grep -aq "supabase.co"; then
-            echo "OK: Supabase URL embutido no APK"
+          if unzip -p "$APK" "classes*.dex" | grep -aq "recomp-games-data"; then
+            echo "OK: repositório padrão configurado"
           else
-            echo "FALHOU: backend não configurado"
+            echo "FALHOU: repositório de dados não configurado"
             exit 1
           fi
 

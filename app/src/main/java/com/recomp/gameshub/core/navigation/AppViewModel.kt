@@ -14,8 +14,6 @@ object Routes {
     const val Catalog = "catalog"
     const val Downloads = "downloads"
     const val Settings = "settings"
-    const val Contribution = "contribution"
-    const val AdminReview = "admin_review"
 }
 
 @Composable
