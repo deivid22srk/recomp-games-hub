@@ -139,6 +139,9 @@ class RepoEditorViewModel(
                 fileSizeBytes = meta.fileSizeBytes,
                 tags = meta.tags,
                 lastUpdated = meta.lastUpdated,
+                coverUrl = meta.cover,
+                bannerUrl = meta.banner,
+                screenshots = meta.screenshots,
             )
         }
     }

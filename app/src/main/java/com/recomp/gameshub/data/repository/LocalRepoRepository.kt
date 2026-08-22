@@ -28,6 +28,9 @@ data class LocalGameDraft(
     val fileSizeBytes: Long = 0L,
     val tags: List<String> = emptyList(),
     val lastUpdated: String? = null,
+    val coverUrl: String? = null,
+    val bannerUrl: String? = null,
+    val screenshots: List<String> = emptyList(),
 )
 
 /**
@@ -120,6 +123,9 @@ class LocalRepoRepository(
         fileSizeBytes = draft.fileSizeBytes,
         tags = draft.tags,
         lastUpdated = draft.lastUpdated ?: java.time.LocalDate.now().toString(),
+        cover = draft.coverUrl,
+        banner = draft.bannerUrl,
+        screenshots = draft.screenshots,
     )
 
     private suspend fun writeGame(dir: File, slug: String, metadata: GameMetadataDto) {

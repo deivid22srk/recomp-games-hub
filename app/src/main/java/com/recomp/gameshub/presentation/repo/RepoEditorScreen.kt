@@ -20,12 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -38,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -85,6 +85,12 @@ fun RepoEditorRoute(
     val summaries by viewModel.summaries.collectAsStateWithLifecycle()
 
     var confirmDelete by remember { mutableStateOf<String?>(null) }
+    var pendingReplaceAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val hasActiveSource = repoConfig != null
+    fun confirmReplaceSource(hasActive: Boolean, action: () -> Unit) {
+        if (hasActive) pendingReplaceAction = action else action()
+    }
 
     LaunchedEffect(state) {
         if (state is RepoOpState.Success) {
@@ -139,13 +145,17 @@ fun RepoEditorRoute(
                             url = viewModel.continueUrl.collectAsStateWithLifecycle().value,
                             onUrlChanged = viewModel::onContinueUrlChanged,
                             loading = state is RepoOpState.Loading,
-                            onUseDefault = viewModel::continueWithDefault,
-                            onUseUrl = { viewModel.continueWithUrl(viewModel.continueUrl.value) },
+                            onUseDefault = { confirmReplaceSource(hasActiveSource, viewModel::continueWithDefault) },
+                            onUseUrl = {
+                                confirmReplaceSource(hasActiveSource) {
+                                    viewModel.continueWithUrl(viewModel.continueUrl.value)
+                                }
+                            },
                             onOpenSetup = onOpenSetup,
                         )
                         RepoSection.CREATE_LOCAL -> CreateLocalSection(
                             loading = state is RepoOpState.Loading,
-                            onCreate = viewModel::createLocalRepo,
+                            onCreate = { confirmReplaceSource(hasActiveSource, viewModel::createLocalRepo) },
                         )
                         RepoSection.MANAGE_GAMES -> ManageGamesSection(
                             games = summaries,
@@ -192,6 +202,25 @@ fun RepoEditorRoute(
                 ) { Text("Excluir") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancelar") } },
+        )
+    }
+    pendingReplaceAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingReplaceAction = null },
+            title = { Text("Substituir fonte de dados?") },
+            text = {
+                Text("A fonte de dados atual será substituída. " +
+                    "Os dados do catálogo serão baixados novamente do novo repositório.")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    action()
+                    pendingReplaceAction = null
+                }) { Text("Continuar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingReplaceAction = null }) { Text("Cancelar") }
+            },
         )
     }
 }
@@ -530,14 +559,119 @@ private fun GameForm(
     var downloadUrl by remember { mutableStateOf(initial.downloadUrl.orEmpty()) }
     var size by remember { mutableStateOf(initial.fileSizeBytes.toString()) }
     var tags by remember { mutableStateOf(initial.tags.joinToString(", ")) }
+    var coverUrl by remember { mutableStateOf(initial.coverUrl.orEmpty()) }
+    var bannerUrl by remember { mutableStateOf(initial.bannerUrl.orEmpty()) }
+    var screenshots by remember { mutableStateOf(initial.screenshots.joinToString("\n")) }
+
+    // IA fill
+    var aiJson by remember { mutableStateOf("") }
+    var aiError by remember { mutableStateOf<String?>(null) }
+    var aiNotice by remember { mutableStateOf<String?>(null) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun copyPrompt() {
+        val prompt = buildAiPrompt(sourceRepo.trim())
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Prompt IA", prompt))
+        aiNotice = "Prompt copiado! Cole em uma IA e depois cole o JSON da resposta abaixo."
+        aiError = null
+    }
+
+    fun applyAiJson() {
+        aiError = null
+        aiNotice = null
+        parseAiFill(aiJson).fold(
+            onSuccess = { fill ->
+                name = fill.name ?: name
+                description = fill.description ?: description
+                platform = fill.platform ?: platform
+                author = fill.author ?: author
+                sourceRepo = fill.repository ?: sourceRepo
+                tags = fill.tags?.joinToString(", ") ?: tags
+                coverUrl = fill.coverUrl ?: coverUrl
+                bannerUrl = fill.bannerUrl ?: bannerUrl
+                screenshots = fill.screenshots?.joinToString("\n") ?: screenshots
+                slug = slug.ifBlank { (fill.name ?: name).lowercase().trim()
+                    .replace(Regex("[^a-z0-9]+"), "-").trim('-') }
+                aiJson = ""
+                aiNotice = "Campos preenchidos pela IA. Revise antes de salvar."
+            },
+            onFailure = { error -> aiError = error.message },
+        )
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+            // ── IA fill ──
+            Text(
+                text = "Preencher com IA",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            OutlinedTextField(
+                value = sourceRepo,
+                onValueChange = { sourceRepo = it; aiError = null; aiNotice = null },
+                label = { Text("URL do repositório da recompilação (RECOMP) *") },
+                placeholder = { Text("https://github.com/usuario/recomp") },
+                singleLine = true,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedButton(
+                onClick = { copyPrompt() },
+                enabled = sourceRepo.isNotBlank() && !loading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (sourceRepo.isBlank()) "Informe a URL do repositório para liberar" else "Copiar prompt")
+            }
+            OutlinedTextField(
+                value = aiJson,
+                onValueChange = { aiJson = it; aiError = null; aiNotice = null },
+                label = { Text("Cole aqui o JSON da resposta da IA") },
+                minLines = 3,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { applyAiJson() },
+                enabled = aiJson.isNotBlank() && !loading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Preencher campos com IA")
+            }
+            aiError?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            aiNotice?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            HorizontalDivider()
+
+            // ── Campos ──
             OutlinedTextField(name, { name = it }, label = { Text("Nome *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(description, { description = it }, label = { Text("Descrição") }, minLines = 2, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(platform, { platform = it }, label = { Text("Plataforma original") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -548,6 +682,10 @@ private fun GameForm(
             OutlinedTextField(size, { size = it }, label = { Text("Tamanho (bytes)") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             OutlinedTextField(tags, { tags = it }, label = { Text("Tags (vírgulas)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(coverUrl, { coverUrl = it }, label = { Text("URL da capa") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(bannerUrl, { bannerUrl = it }, label = { Text("URL do banner") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(screenshots, { screenshots = it }, label = { Text("URLs de screenshots (uma por linha)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onCancel, enabled = !loading, modifier = Modifier.weight(1f)) { Text("Cancelar") }
                 Button(
@@ -564,6 +702,9 @@ private fun GameForm(
                                 downloadUrl = downloadUrl.trim().ifBlank { null },
                                 fileSizeBytes = size.trim().toLongOrNull() ?: 0L,
                                 tags = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+                                coverUrl = coverUrl.trim().ifBlank { null },
+                                bannerUrl = bannerUrl.trim().ifBlank { null },
+                                screenshots = screenshots.split("\n").map { it.trim() }.filter { it.isNotBlank() },
                             )
                         )
                     },
