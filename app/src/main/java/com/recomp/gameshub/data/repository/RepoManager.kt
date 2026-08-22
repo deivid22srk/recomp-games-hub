@@ -3,11 +3,14 @@ package com.recomp.gameshub.data.repository
 import com.recomp.gameshub.data.local.GameDao
 import com.recomp.gameshub.data.local.toEntity
 import com.recomp.gameshub.data.remote.RepoApi
+import com.recomp.gameshub.data.remote.RepoIndexDto
 import com.recomp.gameshub.domain.model.AppVersions
 import com.recomp.gameshub.domain.model.RepoConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import java.io.File
 
 sealed interface RepoUpdateInfo {
     data class Available(
@@ -23,6 +26,7 @@ class RepoManager(
     val repoApi: RepoApi,
     private val gameDao: GameDao,
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun config(): RepoConfig? = repoRepository.currentConfig()
 
@@ -86,6 +90,45 @@ class RepoManager(
             gameDao.observeAll().first().size
         }
     }
+
+    /**
+     * Baixa todos os dados de um repositório remoto (manifesto, índice e
+     * metadados de cada jogo) e os grava como um repositório local editável.
+     * Útil para "continuar de um repositório" e depois editar os jogos.
+     */
+    suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Result<Int> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                if (!targetDir.exists()) targetDir.mkdirs()
+                val gamesDir = File(targetDir, "games")
+                if (!gamesDir.exists()) gamesDir.mkdirs()
+
+                val manifest = repoApi.fetchManifest(config)
+                File(targetDir, repoApi.manifestFileName).writeText(
+                    json.encodeToString(manifest)
+                )
+
+                val index = repoApi.fetchIndex(config)
+                File(targetDir, repoApi.indexFileName).writeText(
+                    json.encodeToString(
+                        com.recomp.gameshub.data.remote.RepoIndexDto(
+                            generated = java.time.Instant.now().toString(),
+                            games = index,
+                        )
+                    )
+                )
+
+                index.forEach { entry ->
+                    runCatching { repoApi.fetchMetadata(config, entry.slug) }
+                        .onSuccess { meta ->
+                            val gameDir = File(gamesDir, entry.slug)
+                            if (!gameDir.exists()) gameDir.mkdirs()
+                            File(gameDir, "metadata.json").writeText(json.encodeToString(meta))
+                        }
+                }
+                index.size
+            }
+        }
 
     /**
      * Atualiza o Room a partir do repositório local ativo (após adicionar,

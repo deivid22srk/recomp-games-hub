@@ -70,8 +70,10 @@ class RepoEditorViewModel(
     fun continueWithDefault() {
         _state.value = RepoOpState.Loading
         viewModelScope.launch {
-            repoManager.continueWithRepo(RepoConfig())
+            repoManager.materializeRemoteToLocal(RepoConfig(), localRepoRepository.defaultDir)
                 .onSuccess {
+                    repoRepository.save(localRepoRepository.localConfig(localRepoRepository.defaultLocalPath()))
+                    repoManager.syncFromLocal()
                     _state.value = RepoOpState.Success("Repositório oficial ativado (${it} jogos).")
                 }
                 .onFailure {
@@ -88,8 +90,10 @@ class RepoEditorViewModel(
         }
         _state.value = RepoOpState.Loading
         viewModelScope.launch {
-            repoManager.continueWithRepo(parsed)
+            repoManager.materializeRemoteToLocal(parsed, localRepoRepository.defaultDir)
                 .onSuccess {
+                    repoRepository.save(localRepoRepository.localConfig(localRepoRepository.defaultLocalPath()))
+                    repoManager.syncFromLocal()
                     _state.value = RepoOpState.Success("Repositório ativado (${it} jogos).")
                 }
                 .onFailure {

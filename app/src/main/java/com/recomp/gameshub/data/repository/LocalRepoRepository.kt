@@ -87,8 +87,8 @@ class LocalRepoRepository(
 /** Adiciona um jogo próprio ao repositório local (metadata.json + index.json). */
     suspend fun addLocalGame(dir: File, draft: LocalGameDraft): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val slug = slugify(draft.slug)
-            if (slug.isEmpty()) throw IllegalArgumentException("Slug inválido.")
+            val slug = slugify(draft.slug.ifBlank { draft.name })
+            if (slug.isEmpty()) throw IllegalArgumentException("Slug inválido. Informe um nome válido.")
             val metadata = buildMetadata(slug, draft)
             writeGame(dir, slug, metadata)
         }
