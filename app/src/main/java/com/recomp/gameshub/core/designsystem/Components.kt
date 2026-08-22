@@ -364,6 +364,7 @@ fun DownloadControl(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     downloadEnabled: Boolean = true,
+    installLabel: String = "Instalar",
 ) {
     val phase = task?.phase
     Column(modifier = modifier.fillMaxWidth()) {
@@ -383,7 +384,7 @@ fun DownloadControl(
                     }
                     DownloadPhase.PENDING, DownloadPhase.DOWNLOADING -> ProgressButton(task)
                     DownloadPhase.PAUSED -> ResumeButton(onResume)
-                    DownloadPhase.COMPLETED -> InstallButton(task, onInstall)
+                    DownloadPhase.COMPLETED -> InstallButton(task, onInstall, installLabel)
                     DownloadPhase.FAILED -> RetryButton(task, onRetry)
                 }
             }
@@ -510,7 +511,7 @@ private fun RetryButton(task: DownloadTask?, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit) {
+private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit, label: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Button(
             onClick = onInstall,
@@ -519,7 +520,7 @@ private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit) {
         ) {
             Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Instalar", style = MaterialTheme.typography.titleMedium)
+            Text(label, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.width(8.dp))
             Text(
                 "• pronto",

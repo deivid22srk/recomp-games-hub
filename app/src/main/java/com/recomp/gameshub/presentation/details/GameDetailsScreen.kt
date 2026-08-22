@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -622,27 +624,15 @@ private fun DetailBottomBar(
             .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 14.dp),
     ) {
         val installedState = installState as? GameInstallState.Installed
+        val updateScenario = installedState != null && !installedState.isUpToDate
         if (task != null && !(installedState != null &&
                 installedState.isUpToDate && task.phase == DownloadPhase.COMPLETED)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (installedState != null && !installedState.isUpToDate) {
-                    UpdateBanner(state = installedState)
-                }
-                DownloadControl(
-                    task = task,
-                    onStart = onStart,
-                    onPause = onPause,
-                    onResume = onResume,
-                    onCancel = onCancel,
-                    onRetry = onRetry,
-                    onInstall = onInstall,
-                    onDelete = onDelete,
-                    downloadEnabled = downloadEnabled,
-                )
-                // Durante uma atualização o jogo continua utilizável:
-                // mantém o acesso rápido ao app já instalado.
-                if (installedState != null) {
+            if (updateScenario && task.phase == DownloadPhase.COMPLETED) {
+                // Atualização baixada: o banner vira o botão "Atualizar" e,
+                // como o app já está instalado, dispensa o botão "Instalar".
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    UpdateBanner(state = installedState, onClick = onInstall)
                     FilledTonalButton(
                         onClick = onOpenGame,
                         modifier = Modifier
@@ -657,6 +647,51 @@ private fun DetailBottomBar(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("Abrir app")
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (updateScenario) {
+                        UpdateBanner(
+                            state = installedState,
+                            onClick = when (task.phase) {
+                                DownloadPhase.FAILED -> onRetry
+                                DownloadPhase.PAUSED -> onResume
+                                DownloadPhase.CANCELLED -> if (downloadEnabled) onStart else null
+                                else -> null
+                            },
+                        )
+                    }
+                    DownloadControl(
+                        task = task,
+                        onStart = onStart,
+                        onPause = onPause,
+                        onResume = onResume,
+                        onCancel = onCancel,
+                        onRetry = onRetry,
+                        onInstall = onInstall,
+                        onDelete = onDelete,
+                        downloadEnabled = downloadEnabled,
+                        installLabel = if (updateScenario) "Atualizar" else "Instalar",
+                    )
+                    // Durante uma atualização o jogo continua utilizável:
+                    // mantém o acesso rápido ao app já instalado.
+                    if (installedState != null) {
+                        FilledTonalButton(
+                            onClick = onOpenGame,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Abrir app")
+                        }
                     }
                 }
             }
@@ -743,7 +778,7 @@ private fun UpdateStatusBar(
     onOpenGame: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        UpdateBanner(state = state)
+        UpdateBanner(state = state, onClick = onUpdate)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = onUpdate,
@@ -775,12 +810,20 @@ private fun UpdateStatusBar(
 }
 
 @Composable
-private fun UpdateBanner(state: GameInstallState.Installed) {
+private fun UpdateBanner(
+    state: GameInstallState.Installed,
+    onClick: (() -> Unit)? = null,
+) {
+    val shape = RoundedCornerShape(14.dp)
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer,
         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth(),
+        shape = shape,
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { base ->
+                if (onClick != null) base.clip(shape).clickable(onClick = onClick) else base
+            },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -792,7 +835,7 @@ private fun UpdateBanner(state: GameInstallState.Installed) {
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
             )
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Atualização disponível",
                     style = MaterialTheme.typography.labelLarge,
@@ -807,6 +850,14 @@ private fun UpdateBanner(state: GameInstallState.Installed) {
                         }
                     },
                     style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.Rounded.SystemUpdate,
+                    contentDescription = "Atualizar",
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
