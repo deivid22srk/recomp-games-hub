@@ -25,6 +25,9 @@ interface GameDao {
     @Query("DELETE FROM games WHERE slug NOT IN (:keep)")
     suspend fun deleteWhereMissing(keep: List<String>)
 
+    @Query("DELETE FROM games WHERE slug = :slug")
+    suspend fun delete(slug: String)
+
     @Query("DELETE FROM games")
     suspend fun clear()
 }

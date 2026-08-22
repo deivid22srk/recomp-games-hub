@@ -75,49 +75,79 @@ class LocalRepoRepository(
         }
     }
 
-    /** Adiciona um jogo próprio ao repositório local (metadata.json + index.json). */
+    /** Lê o metadata de um jogo do repositório local. */
+    suspend fun getLocalGame(dir: File, slug: String): Result<GameMetadataDto?> = withContext(Dispatchers.IO) {
+        runCatching {
+            val metadataFile = File(dir, "games/$slug/metadata.json")
+            if (!metadataFile.exists()) return@runCatching null
+            json.decodeFromString<GameMetadataDto>(metadataFile.readText())
+        }
+    }
+
+/** Adiciona um jogo próprio ao repositório local (metadata.json + index.json). */
     suspend fun addLocalGame(dir: File, draft: LocalGameDraft): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val slug = draft.slug.lowercase().trim()
-                .replace(Regex("[^a-z0-9]+"), "-").trim('-')
+            val slug = slugify(draft.slug)
             if (slug.isEmpty()) throw IllegalArgumentException("Slug inválido.")
-            val gameDir = File(dir, "games/$slug")
-            if (!gameDir.exists()) gameDir.mkdirs()
-
-            val metadata = GameMetadataDto(
-                slug = slug,
-                name = draft.name.trim(),
-                description = draft.description.trim(),
-                originalPlatform = draft.originalPlatform,
-                author = draft.author,
-                sourceRepo = draft.sourceRepo,
-                status = draft.status,
-                version = draft.version,
-                downloadUrl = draft.downloadUrl,
-                fileSizeBytes = draft.fileSizeBytes,
-                tags = draft.tags,
-                lastUpdated = draft.lastUpdated ?: java.time.LocalDate.now().toString(),
-            )
-            File(gameDir, "metadata.json").writeText(json.encodeToString(metadata))
-
-            val games = listLocalGames(dir).getOrElse { emptyList() }.toMutableList()
-            games.removeAll { it.slug == slug }
-            games.add(
-                IndexEntryDto(
-                    slug = slug,
-                    name = metadata.name,
-                    status = metadata.status,
-                    version = metadata.version,
-                    platform = metadata.originalPlatform,
-                    cover = metadata.cover,
-                    lastUpdated = metadata.lastUpdated,
-                )
-            )
-            games.sortBy { it.name.lowercase() }
-            File(dir, indexFileName).writeText(
-                json.encodeToString(RepoIndexDto(generated = java.time.Instant.now().toString(), games = games))
-            )
+            val metadata = buildMetadata(slug, draft)
+            writeGame(dir, slug, metadata)
         }
+    }
+
+    /** Atualiza um jogo existente no repositório local. */
+    suspend fun updateLocalGame(dir: File, slug: String, draft: LocalGameDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val newSlug = slugify(draft.slug)
+            if (newSlug.isEmpty()) throw IllegalArgumentException("Slug inválido.")
+            if (slug != newSlug) {
+                File(dir, "games/$slug").deleteRecursively()
+            }
+            val metadata = buildMetadata(newSlug, draft)
+            writeGame(dir, newSlug, metadata)
+        }
+    }
+
+    private fun buildMetadata(slug: String, draft: LocalGameDraft) = GameMetadataDto(
+        slug = slug,
+        name = draft.name.trim(),
+        description = draft.description.trim(),
+        originalPlatform = draft.originalPlatform,
+        author = draft.author,
+        sourceRepo = draft.sourceRepo,
+        status = draft.status,
+        version = draft.version,
+        downloadUrl = draft.downloadUrl,
+        fileSizeBytes = draft.fileSizeBytes,
+        tags = draft.tags,
+        lastUpdated = draft.lastUpdated ?: java.time.LocalDate.now().toString(),
+    )
+
+    private suspend fun writeGame(dir: File, slug: String, metadata: GameMetadataDto) {
+        val gameDir = File(dir, "games/$slug")
+        if (!gameDir.exists()) gameDir.mkdirs()
+        File(gameDir, "metadata.json").writeText(json.encodeToString(metadata))
+
+        val games = listLocalGames(dir).getOrElse { emptyList() }.toMutableList()
+        games.removeAll { it.slug == slug }
+        games.add(
+            IndexEntryDto(
+                slug = slug,
+                name = metadata.name,
+                status = metadata.status,
+                version = metadata.version,
+                platform = metadata.originalPlatform,
+                cover = metadata.cover,
+                lastUpdated = metadata.lastUpdated,
+            )
+        )
+        games.sortBy { it.name.lowercase() }
+        File(dir, indexFileName).writeText(
+            json.encodeToString(RepoIndexDto(generated = java.time.Instant.now().toString(), games = games))
+        )
+    }
+
+    private fun slugify(value: String): String =
+        value.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-')
     }
 
     /** Remove um jogo do repositório local. */

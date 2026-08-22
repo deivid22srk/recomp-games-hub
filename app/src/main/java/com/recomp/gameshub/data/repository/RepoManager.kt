@@ -73,6 +73,33 @@ class RepoManager(
         }
     }
 
+    /**
+     * Define um repositório como fonte ativa e baixa todo o seu catálogo,
+     * substituindo os dados locais (usado ao "continuar de um repositório").
+     */
+    suspend fun continueWithRepo(config: RepoConfig): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            repoRepository.save(config)
+            val manifest = repoApi.fetchManifest(config)
+            syncCatalog(config)
+            repoRepository.saveInstalledVersion(manifest.version)
+            gameDao.observeAll().first().size
+        }
+    }
+
+    /**
+     * Atualiza o Room a partir do repositório local ativo (após adicionar,
+     * editar ou excluir jogos localmente).
+     */
+    suspend fun syncFromLocal(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val config = repoRepository.currentConfig()
+                ?: throw IllegalStateException("Repositório não configurado.")
+            syncCatalog(config)
+            gameDao.observeAll().first().size
+        }
+    }
+
     private suspend fun syncCatalog(config: RepoConfig) {
         val index = repoApi.fetchIndex(config)
         val now = System.currentTimeMillis()
