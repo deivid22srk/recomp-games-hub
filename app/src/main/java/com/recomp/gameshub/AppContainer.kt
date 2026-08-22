@@ -3,11 +3,13 @@ package com.recomp.gameshub
 import android.content.Context
 import androidx.room.Room
 import com.recomp.gameshub.data.local.AppDatabase
+import com.recomp.gameshub.data.remote.GithubPublishApi
 import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.remote.RepoApi
 import com.recomp.gameshub.data.repository.CatalogRepository
 import com.recomp.gameshub.data.repository.DownloadRepository
 import com.recomp.gameshub.data.repository.InstalledGamesRepository
+import com.recomp.gameshub.data.repository.LocalRepoRepository
 import com.recomp.gameshub.data.repository.RepoManager
 import com.recomp.gameshub.data.repository.RepoRepository
 import com.recomp.gameshub.data.repository.SettingsRepository
@@ -38,12 +40,17 @@ class AppContainer(
     val repoRepository = RepoRepository(app)
     val settingsRepository = SettingsRepository(app)
     val githubReleaseApi = GithubReleaseApi(networkClient)
+    val githubPublishApi = GithubPublishApi(networkClient)
 
     val downloadsDir: File = File(app.filesDir, "downloads").apply {
         if (!exists()) mkdirs()
     }
+    val localRepoDir: File = File(app.filesDir, "repos/local").apply {
+        if (!exists()) mkdirs()
+    }
 
     val repoManager = RepoManager(repoRepository, repoApi, database.gameDao())
+    val localRepoRepository = LocalRepoRepository(githubPublishApi, repoApi, localRepoDir)
     val catalogRepository = CatalogRepository(database.gameDao(), repoManager)
     val downloadRepository = DownloadRepository(database.downloadDao(), downloadsDir, appScope)
     val downloadEngine = DownloadEngine(downloadRepository, networkClient)

@@ -15,8 +15,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.recomp.gameshub.presentation.catalog.CatalogRoute
 import com.recomp.gameshub.presentation.downloads.DownloadsRoute
+import com.recomp.gameshub.presentation.repo.RepoEditorRoute
 import com.recomp.gameshub.presentation.settings.SettingsRoute
 import com.recomp.gameshub.presentation.splash.SplashScreen
+import com.recomp.gameshub.presentation.setup.SetupRoute
 import kotlinx.coroutines.delay
 
 @Composable
@@ -71,7 +73,17 @@ fun AppNavHost() {
                 onBack = { navController.popBackStack() },
                 onOpenCatalog = { navigateTo(Routes.Catalog) },
                 onOpenDownloads = { navigateTo(Routes.Downloads) },
+                onOpenRepoEditor = { navigateTo(Routes.RepoEditor) },
             )
+        }
+        composable(Routes.RepoEditor) {
+            RepoEditorRoute(
+                onBack = { navController.popBackStack() },
+                onOpenSetup = { navigateTo(Routes.Setup) },
+            )
+        }
+        composable(Routes.Setup) {
+            SetupRoute(onComplete = { navController.popBackStack() })
         }
     }
 }

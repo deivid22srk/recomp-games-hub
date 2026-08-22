@@ -56,6 +56,7 @@ fun SettingsRoute(
     onBack: () -> Unit,
     onOpenCatalog: () -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenRepoEditor: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = appViewModel {
         SettingsViewModel(it.settingsRepository, it.repoRepository)
@@ -199,6 +200,37 @@ fun SettingsRoute(
                                 text = repoConfig?.displayName ?: "Não configurado",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenRepoEditor),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Verified,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.size(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Criar fonte de dados", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = "Use um repositório, crie um local ou publique seus próprios RECOMPS",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
