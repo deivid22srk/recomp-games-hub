@@ -1,12 +1,19 @@
 package com.recomp.gameshub.presentation.admin
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -20,7 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -35,7 +43,9 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SystemUpdateAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -93,11 +104,15 @@ fun AdminReviewRoute(
     val principalStatus by viewModel.principalStatus.collectAsStateWithLifecycle()
     val promotionState by viewModel.promotionState.collectAsStateWithLifecycle()
     val actionStates by viewModel.actionStates.collectAsStateWithLifecycle()
+    val appUpdate by viewModel.appUpdate.collectAsStateWithLifecycle()
+    val appReleaseAction by viewModel.appReleaseAction.collectAsStateWithLifecycle()
 
+    var section by rememberSaveable { mutableStateOf(ModerationSection.HOME) }
     var rejectSlug by rememberSaveable { mutableStateOf<String?>(null) }
     var editSubmission by remember { mutableStateOf<GameSubmission?>(null) }
     var deleteSubmission by remember { mutableStateOf<GameSubmission?>(null) }
     var confirmPromoteEmail by rememberSaveable { mutableStateOf<String?>(null) }
+    var removeReleaseId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val isPrincipalAdmin = principalStatus == PrincipalAdminStatus.Granted
 
@@ -121,12 +136,39 @@ fun AdminReviewRoute(
         }
     }
 
+    LaunchedEffect(appReleaseAction) {
+        if (appReleaseAction is AppReleaseUiState.Result) {
+            delay(6_000)
+            viewModel.dismissAppReleaseResult()
+        }
+    }
+
+    LaunchedEffect(isPrincipalAdmin, section) {
+        if (isPrincipalAdmin && section == ModerationSection.APP_UPDATE &&
+            appUpdate.current == null && !appUpdate.isLoading && appUpdate.loadError == null
+        ) {
+            viewModel.refreshAppRelease()
+        }
+    }
+
+    BackHandler(enabled = section != ModerationSection.HOME) {
+        section = ModerationSection.HOME
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             AppTopBar(
-                title = "Moderação",
-                onBack = onBack,
+                title = when (section) {
+                    ModerationSection.HOME -> "Moderação"
+                    ModerationSection.PENDING -> "Pendências"
+                    ModerationSection.ALL_CONTRIBUTIONS -> "Todas as contribuições"
+                    ModerationSection.PROMOTE_ADMIN -> "Promover ADM"
+                    ModerationSection.APP_UPDATE -> "Atualização do app"
+                },
+                onBack = {
+                    if (section == ModerationSection.HOME) onBack() else section = ModerationSection.HOME
+                },
             )
         },
     ) { innerPadding ->
@@ -173,102 +215,65 @@ fun AdminReviewRoute(
             }
 
             item {
-                SectionHeaderRow(
-                    title = "Pendências",
-                    count = uiState.pending.size,
-                    icon = Icons.Rounded.Schedule,
-                )
-            }
-            if (uiState.isLoading && uiState.pending.isEmpty()) {
-                item { LoadingCard() }
-            } else if (uiState.error != null && uiState.pending.isEmpty()) {
-                item {
-                    ErrorStateBox(
-                        message = uiState.error.orEmpty(),
-                        onRetry = viewModel::refresh,
-                    )
-                }
-            } else if (uiState.pending.isEmpty()) {
-                item {
-                    EmptyStateBox(
-                        title = "Nada pendente",
-                        message = "Todas as contribuições enviadas já foram revisadas.",
-                        icon = Icons.Rounded.CheckCircle,
-                    )
-                }
-            } else {
-                uiState.pending.forEach { submission ->
-                    item(key = submission.slug) {
-                        AdminSubmissionCard(
-                            submission = submission,
-                            onApprove = { viewModel.approve(submission.slug, submission.name) },
-                            onReject = { rejectSlug = submission.slug },
-                            onEdit = { editSubmission = submission },
-                            onDelete = { deleteSubmission = submission },
-                            approveLoading =
-                                actionStates["approve:${submission.slug}"]?.inProgress == true,
-                            approveError = actionStates["approve:${submission.slug}"]?.error,
-                            showReviewActions = true,
+                AnimatedContent(
+                    targetState = section,
+                    transitionSpec = {
+                        val forward = targetState.ordinal > initialState.ordinal
+                        val direction = if (forward) 1 else -1
+                        (slideInHorizontally { it * direction } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it * direction } + fadeOut())
+                    },
+                    label = "moderationSection",
+                ) { current ->
+                    when (current) {
+                        ModerationSection.HOME -> ModerationHomeSection(
+                            pendingCount = uiState.pending.size,
+                            totalCount = uiState.all.size,
+                            isLoading = uiState.isLoading,
+                            isPrincipalAdmin = isPrincipalAdmin,
+                            onOpenPending = { section = ModerationSection.PENDING },
+                            onOpenAll = { section = ModerationSection.ALL_CONTRIBUTIONS },
+                            onOpenPromote = { section = ModerationSection.PROMOTE_ADMIN },
+                            onOpenAppUpdate = { section = ModerationSection.APP_UPDATE },
                         )
-                    }
-                }
-            }
-
-            if (uiState.all.isNotEmpty() || uiState.allError != null) {
-                item {
-                    SectionHeaderRow(
-                        title = "Todas as contribuições",
-                        count = uiState.all.size,
-                        icon = Icons.Rounded.ListAlt,
-                    )
-                }
-                uiState.allError?.let { allError ->
-                    item {
-                        AllErrorBanner(
-                            message = allError,
+                        ModerationSection.PENDING -> PendingSubmissionsSection(
+                            uiState = uiState,
+                            actionStates = actionStates,
+                            onApprove = viewModel::approve,
+                            onReject = { rejectSlug = it },
+                            onEdit = { editSubmission = it },
+                            onDelete = { deleteSubmission = it },
                             onRetry = viewModel::refresh,
-                            onDismiss = viewModel::dismissAllError,
                         )
-                    }
-                }
-                uiState.all.forEach { submission ->
-                    item(key = "all-${submission.submissionId}") {
-                        AdminSubmissionCard(
-                            submission = submission,
-                            onApprove = { viewModel.approve(submission.slug, submission.name) },
-                            onReject = { rejectSlug = submission.slug },
-                            onEdit = { editSubmission = submission },
-                            onDelete = { deleteSubmission = submission },
-                            approveLoading =
-                                actionStates["approve:${submission.slug}"]?.inProgress == true,
-                            approveError = actionStates["approve:${submission.slug}"]?.error,
-                            showReviewActions = submission.status == "pending",
+                        ModerationSection.ALL_CONTRIBUTIONS -> AllContributionsSection(
+                            uiState = uiState,
+                            actionStates = actionStates,
+                            onApprove = viewModel::approve,
+                            onReject = { rejectSlug = it },
+                            onEdit = { editSubmission = it },
+                            onDelete = { deleteSubmission = it },
+                            onRetry = viewModel::refresh,
+                            onDismissError = viewModel::dismissAllError,
                         )
-                    }
-                }
-            }
-
-            when (principalStatus) {
-                PrincipalAdminStatus.Granted -> {
-                    item {
-                        PromoteAdminCard(
-                            state = promotionState,
+                        ModerationSection.PROMOTE_ADMIN -> PromoteAdminSection(
+                            principalStatus = principalStatus,
+                            promotionState = promotionState,
                             onPromoteClick = { email -> confirmPromoteEmail = email },
                             onDismissPromotion = viewModel::dismissPromotion,
+                            onRetryStatus = viewModel::refreshPrincipalStatus,
+                        )
+                        ModerationSection.APP_UPDATE -> AppUpdateCard(
+                            state = appUpdate,
+                            actionState = appReleaseAction,
+                            onPublishClick = { name, url, notes ->
+                                viewModel.publishAppRelease(name, url, notes)
+                            },
+                            onRemoveClick = { releaseId -> removeReleaseId = releaseId },
+                            onDismissResult = viewModel::dismissAppReleaseResult,
+                            onRefresh = viewModel::refreshAppRelease,
                         )
                     }
                 }
-                PrincipalAdminStatus.Loading, PrincipalAdminStatus.Unknown -> {
-                    item {
-                        PrincipalStatusPlaceholder()
-                    }
-                }
-                PrincipalAdminStatus.Failed -> {
-                    item {
-                        PrincipalStatusFailed(onRetry = viewModel::refreshPrincipalStatus)
-                    }
-                }
-                PrincipalAdminStatus.Denied -> Unit
             }
 
             item { Spacer(Modifier.height(24.dp)) }
@@ -323,6 +328,33 @@ fun AdminReviewRoute(
             },
         )
     }
+    removeReleaseId?.let { releaseId ->
+        AlertDialog(
+            onDismissRequest = { removeReleaseId = null },
+            title = { Text("Remover publicação?") },
+            text = { Text("O aviso de atualização deixa de ser exibido para os usuários.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.removeAppRelease(releaseId)
+                        removeReleaseId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Remover") }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeReleaseId = null }) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+private enum class ModerationSection {
+    HOME,
+    PENDING,
+    ALL_CONTRIBUTIONS,
+    PROMOTE_ADMIN,
+    APP_UPDATE,
 }
 
 @Composable
@@ -402,47 +434,536 @@ private fun ModerationHero(
 }
 
 @Composable
-private fun SectionHeaderRow(
-    title: String,
-    count: Int,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
+private fun ModerationHomeSection(
+    pendingCount: Int,
+    totalCount: Int,
+    isLoading: Boolean,
+    isPrincipalAdmin: Boolean,
+    onOpenPending: () -> Unit,
+    onOpenAll: () -> Unit,
+    onOpenPromote: () -> Unit,
+    onOpenAppUpdate: () -> Unit,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val pendingMessage = when {
+            isLoading -> "Carregando contribuições…"
+            pendingCount > 0 -> "$pendingCount contribuição(ões) aguardando revisão."
+            else -> "Nenhuma pendência no momento."
+        }
+        ModerationActionCard(
+            icon = Icons.Rounded.Schedule,
+            title = "Pendências",
+            message = pendingMessage,
+            actionLabel = "Revisar pendências",
+            onClick = onOpenPending,
+        )
+        ModerationActionCard(
+            icon = Icons.Rounded.ListAlt,
+            title = "Todas as contribuições",
+            message = if (totalCount > 0) {
+                "$totalCount contribuição(ões) no catálogo da comunidade."
+            } else {
+                "Veja, edite e gerencie todas as contribuições."
+            },
+            actionLabel = "Ver contribuições",
+            onClick = onOpenAll,
+        )
+        if (isPrincipalAdmin) {
+            ModerationActionCard(
+                icon = Icons.Rounded.PersonAdd,
+                title = "Promover administrador",
+                message = "Adicione um usuário como ADM informando o e-mail.",
+                actionLabel = "Promover ADM",
+                onClick = onOpenPromote,
+            )
+            ModerationActionCard(
+                icon = Icons.Rounded.SystemUpdateAlt,
+                title = "Atualização do aplicativo",
+                message = "Publique a nova versão do Recomp Hub que os usuários verão ao abrir o app.",
+                actionLabel = "Gerenciar atualização",
+                onClick = onOpenAppUpdate,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModerationActionCard(
+    icon: ImageVector,
+    title: String,
+    message: String,
+    actionLabel: String,
+    onClick: () -> Unit,
+) {
+    val shape = MaterialTheme.shapes.large
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = shape,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        if (count > 0) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                shape = RoundedCornerShape(50),
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .clickable(
+                    onClickLabel = actionLabel,
+                    onClick = onClick,
+                    role = Role.Button,
+                ),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(12.dp).size(24.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(5.dp).size(24.dp),
+                    )
+                }
             }
         }
     }
 }
+
+@Composable
+private fun PendingSubmissionsSection(
+    uiState: AdminReviewUiState,
+    actionStates: Map<String, AdminActionState>,
+    onApprove: (slug: String, name: String) -> Unit,
+    onReject: (slug: String) -> Unit,
+    onEdit: (GameSubmission) -> Unit,
+    onDelete: (GameSubmission) -> Unit,
+    onRetry: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when {
+            uiState.isLoading && uiState.pending.isEmpty() -> {
+                LoadingCard()
+            }
+            uiState.error != null && uiState.pending.isEmpty() -> {
+                ErrorStateBox(
+                    message = uiState.error.orEmpty(),
+                    onRetry = onRetry,
+                )
+            }
+            uiState.pending.isEmpty() -> {
+                EmptyStateBox(
+                    title = "Nada pendente",
+                    message = "Todas as contribuições enviadas já foram revisadas.",
+                    icon = Icons.Rounded.CheckCircle,
+                )
+            }
+            else -> {
+                uiState.pending.forEach { submission ->
+                    AdminSubmissionCard(
+                        submission = submission,
+                        onApprove = { onApprove(submission.slug, submission.name) },
+                        onReject = { onReject(submission.slug) },
+                        onEdit = { onEdit(submission) },
+                        onDelete = { onDelete(submission) },
+                        approveLoading =
+                            actionStates["approve:${submission.slug}"]?.inProgress == true,
+                        approveError = actionStates["approve:${submission.slug}"]?.error,
+                        showReviewActions = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllContributionsSection(
+    uiState: AdminReviewUiState,
+    actionStates: Map<String, AdminActionState>,
+    onApprove: (slug: String, name: String) -> Unit,
+    onReject: (slug: String) -> Unit,
+    onEdit: (GameSubmission) -> Unit,
+    onDelete: (GameSubmission) -> Unit,
+    onRetry: () -> Unit,
+    onDismissError: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        uiState.allError?.let { allError ->
+            AllErrorBanner(
+                message = allError,
+                onRetry = onRetry,
+                onDismiss = onDismissError,
+            )
+        }
+        when {
+            uiState.all.isEmpty() && uiState.allError == null && uiState.isLoading -> {
+                LoadingCard()
+            }
+            uiState.all.isEmpty() && uiState.allError == null -> {
+                EmptyStateBox(
+                    title = "Nenhuma contribuição",
+                    message = "Ainda não há contribuições registradas.",
+                    icon = Icons.Rounded.ListAlt,
+                )
+            }
+            else -> {
+                uiState.all.forEach { submission ->
+                    AdminSubmissionCard(
+                        submission = submission,
+                        onApprove = { onApprove(submission.slug, submission.name) },
+                        onReject = { onReject(submission.slug) },
+                        onEdit = { onEdit(submission) },
+                        onDelete = { onDelete(submission) },
+                        approveLoading =
+                            actionStates["approve:${submission.slug}"]?.inProgress == true,
+                        approveError = actionStates["approve:${submission.slug}"]?.error,
+                        showReviewActions = submission.status == "pending",
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromoteAdminSection(
+    principalStatus: PrincipalAdminStatus,
+    promotionState: AdminPromotionUiState,
+    onPromoteClick: (String) -> Unit,
+    onDismissPromotion: () -> Unit,
+    onRetryStatus: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (principalStatus) {
+            PrincipalAdminStatus.Granted -> {
+                PromoteAdminCard(
+                    state = promotionState,
+                    onPromoteClick = onPromoteClick,
+                    onDismissPromotion = onDismissPromotion,
+                )
+            }
+            PrincipalAdminStatus.Loading, PrincipalAdminStatus.Unknown -> {
+                PrincipalStatusPlaceholder()
+            }
+            PrincipalAdminStatus.Failed -> {
+                PrincipalStatusFailed(onRetry = onRetryStatus)
+            }
+            PrincipalAdminStatus.Denied -> {
+                PrincipalStatusFailed(onRetry = onRetryStatus)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppUpdateCard(
+    state: AdminAppUpdateState,
+    actionState: AppReleaseUiState,
+    onPublishClick: (versionName: String, downloadUrl: String, notes: String?) -> Unit,
+    onRemoveClick: (releaseId: String) -> Unit,
+    onDismissResult: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var versionName by rememberSaveable { mutableStateOf("") }
+    var downloadUrl by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var showVersionError by rememberSaveable { mutableStateOf(false) }
+    var showUrlError by rememberSaveable { mutableStateOf(false) }
+
+    val isPublishing = actionState is AppReleaseUiState.Loading
+    val result = actionState as? AppReleaseUiState.Result
+    val current = state.current
+
+    LaunchedEffect(result?.ok) {
+        if (result?.ok == true) {
+            versionName = ""
+            downloadUrl = ""
+            notes = ""
+            showVersionError = false
+            showUrlError = false
+        }
+    }
+
+    val attemptPublish = {
+        if (!isPublishing) {
+            val name = versionName.trim()
+            val url = downloadUrl.trim()
+            val versionValid = isValidVersionName(name)
+            val urlValid = url.startsWith("http://") || url.startsWith("https://")
+            showVersionError = !versionValid
+            showUrlError = !urlValid
+            if (versionValid && urlValid) {
+                onPublishClick(name, url, notes.trim().takeIf { it.isNotBlank() })
+            }
+        }
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SystemUpdateAlt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(12.dp).size(24.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Atualização do Recomp Hub",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Informe a versão e o link de download. Os usuários recebem o aviso ao abrir o app.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        text = "ADM principal",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = state.isLoading || state.loadError != null || current != null,
+                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+            ) {
+                Column {
+                    Spacer(Modifier.height(14.dp))
+                    when {
+                        state.isLoading -> Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = "Carregando publicação atual…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        state.loadError != null -> Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = state.loadError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onRefresh) { Text("Tentar novamente") }
+                        }
+                        current != null -> Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Publicada no ar: v${current.versionName}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(onClick = { onRemoveClick(current.id ?: "") }) {
+                                        Text("Remover", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                                current.publishedAt?.let { date ->
+                                    Text(
+                                        text = "Publicada em ${date.take(10)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                current.notes?.takeIf { it.isNotBlank() }?.let { note ->
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = note,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = versionName,
+                onValueChange = {
+                    versionName = it
+                    showVersionError = false
+                },
+                label = { Text("Versão") },
+                placeholder = { Text("1.0.1") },
+                singleLine = true,
+                enabled = !isPublishing,
+                isError = showVersionError,
+                supportingText = {
+                    Text(
+                        text = if (showVersionError) {
+                            "Use números e pontos, ex.: 1.0.1"
+                        } else {
+                            "Compare apenas números e pontos (até 3 níveis)."
+                        },
+                        color = if (showVersionError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = downloadUrl,
+                onValueChange = {
+                    downloadUrl = it
+                    showUrlError = false
+                },
+                label = { Text("Link de download do APK") },
+                placeholder = { Text("https://…") },
+                singleLine = true,
+                enabled = !isPublishing,
+                isError = showUrlError,
+                supportingText = {
+                    Text(
+                        text = if (showUrlError) {
+                            "Informe um link começando com https://"
+                        } else {
+                            "O botão «Baixar atualização» abrirá este link."
+                        },
+                        color = if (showUrlError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { attemptPublish() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Novidades (opcional)") },
+                placeholder = { Text("O que mudou nesta versão…") },
+                minLines = 2,
+                enabled = !isPublishing,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = attemptPublish,
+                enabled = versionName.isNotBlank() && downloadUrl.isNotBlank() && !isPublishing,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            ) {
+                if (isPublishing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.RocketLaunch,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (isPublishing) "Publicando…" else "Publicar atualização",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            AnimatedVisibility(
+                visible = result != null,
+                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+            ) {
+                result?.let {
+                    Spacer(Modifier.height(12.dp))
+                    InfoBanner(
+                        message = it.message,
+                        isError = !it.ok,
+                        leadingIcon = if (it.ok) {
+                            Icons.Rounded.CheckCircle
+                        } else {
+                            Icons.Rounded.ErrorOutline
+                        },
+                        onDismiss = onDismissResult,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun isValidVersionName(value: String): Boolean =
+    value.matches(Regex("^\\d+(\\.\\d+){0,2}$"))
 
 @Composable
 private fun LoadingCard() {

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.data.repository.AuthRepository
 import com.recomp.gameshub.data.repository.ContributionRepository
+import com.recomp.gameshub.domain.model.AppUpdateInfo
 import com.recomp.gameshub.domain.model.GameSubmission
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,18 @@ enum class PrincipalAdminStatus {
 data class AdminActionState(
     val inProgress: Boolean = false,
     val error: String? = null,
+)
+
+sealed interface AppReleaseUiState {
+    data object Idle : AppReleaseUiState
+    data object Loading : AppReleaseUiState
+    data class Result(val ok: Boolean, val message: String) : AppReleaseUiState
+}
+
+data class AdminAppUpdateState(
+    val isLoading: Boolean = false,
+    val current: AppUpdateInfo? = null,
+    val loadError: String? = null,
 )
 
 data class AdminReviewUiState(
@@ -66,10 +79,14 @@ class AdminReviewViewModel(
     private val _principalStatus = MutableStateFlow(PrincipalAdminStatus.Unknown)
     private val _promotionState = MutableStateFlow<AdminPromotionUiState>(AdminPromotionUiState.Idle)
     private val _actionStates = MutableStateFlow<Map<String, AdminActionState>>(emptyMap())
+    private val _appUpdate = MutableStateFlow(AdminAppUpdateState())
+    private val _appReleaseAction = MutableStateFlow<AppReleaseUiState>(AppReleaseUiState.Idle)
 
     val principalStatus: StateFlow<PrincipalAdminStatus> = _principalStatus.asStateFlow()
     val promotionState: StateFlow<AdminPromotionUiState> = _promotionState.asStateFlow()
     val actionStates: StateFlow<Map<String, AdminActionState>> = _actionStates.asStateFlow()
+    val appUpdate: StateFlow<AdminAppUpdateState> = _appUpdate.asStateFlow()
+    val appReleaseAction: StateFlow<AppReleaseUiState> = _appReleaseAction.asStateFlow()
 
     val uiState: StateFlow<AdminReviewUiState> = combine(
         combine(_pending, _all) { pending, all -> AdminLists(pending, all) },
@@ -271,6 +288,70 @@ class AdminReviewViewModel(
 
     fun dismissPromotion() {
         _promotionState.value = AdminPromotionUiState.Idle
+    }
+
+    // ---------- App update publishing (principal admin) ----------
+
+    fun refreshAppRelease() {
+        if (_appUpdate.value.isLoading) return
+        _appUpdate.value = _appUpdate.value.copy(isLoading = true, loadError = null)
+        viewModelScope.launch {
+            contributionRepository.latestAppRelease()
+                .onSuccess { release ->
+                    _appUpdate.value = AdminAppUpdateState(current = release)
+                }
+                .onFailure { failure ->
+                    _appUpdate.value = AdminAppUpdateState(
+                        loadError = failure.message ?: "Não foi possível carregar a atualização publicada.",
+                    )
+                }
+        }
+    }
+
+    fun publishAppRelease(versionName: String, downloadUrl: String, notes: String?) {
+        if (_appReleaseAction.value is AppReleaseUiState.Loading) return
+        _appReleaseAction.value = AppReleaseUiState.Loading
+        viewModelScope.launch {
+            contributionRepository.publishAppRelease(versionName, downloadUrl, notes)
+                .onSuccess {
+                    _appReleaseAction.value = AppReleaseUiState.Result(
+                        ok = true,
+                        message = "Atualização v${versionName.trim()} publicada. Os usuários verão o aviso ao abrir o app.",
+                    )
+                    refreshAppRelease()
+                }
+                .onFailure { failure ->
+                    _appReleaseAction.value = AppReleaseUiState.Result(
+                        ok = false,
+                        message = failure.message ?: "Não foi possível publicar a atualização.",
+                    )
+                }
+        }
+    }
+
+    fun removeAppRelease(id: String) {
+        if (_appReleaseAction.value is AppReleaseUiState.Loading) return
+        _appReleaseAction.value = AppReleaseUiState.Loading
+        viewModelScope.launch {
+            contributionRepository.deleteAppRelease(id)
+                .onSuccess {
+                    _appReleaseAction.value = AppReleaseUiState.Result(
+                        ok = true,
+                        message = "Publicação removida. Nenhuma atualização será anunciada.",
+                    )
+                    refreshAppRelease()
+                }
+                .onFailure { failure ->
+                    _appReleaseAction.value = AppReleaseUiState.Result(
+                        ok = false,
+                        message = failure.message ?: "Não foi possível remover a publicação.",
+                    )
+                }
+        }
+    }
+
+    fun dismissAppReleaseResult() {
+        _appReleaseAction.value = AppReleaseUiState.Idle
     }
 
     fun dismissMessages() {

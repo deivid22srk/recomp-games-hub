@@ -272,6 +272,60 @@ class SupabaseApi(
         return text.trim().toBooleanStrictOrNull() ?: text.contains("true")
     }
 
+    // ---------- App self-update ----------
+
+    /**
+     * Most recent Recomp Hub release published by the principal admin.
+     * Public read (RLS: select for everyone), ordered by the highest version code.
+     */
+    suspend fun fetchLatestAppRelease(): AppReleaseRow? =
+        selectRows(
+            APP_RELEASES_TABLE,
+            filter = "id=not.is.null",
+            select = "id,version_code,version_name,download_url,notes,published_by,created_at",
+            limit = 1,
+            order = "version_code.desc.nullslast,created_at.desc",
+        ).firstOrNull()
+
+    suspend fun fetchAppReleases(accessToken: String, limit: Int = 10): List<AppReleaseRow> =
+        selectRows(
+            APP_RELEASES_TABLE,
+            filter = "id=not.is.null",
+            select = "id,version_code,version_name,download_url,notes,published_by,created_at",
+            token = accessToken,
+            limit = limit,
+            order = "version_code.desc.nullslast,created_at.desc",
+        )
+
+    suspend fun insertAppRelease(release: AppReleaseRow, accessToken: String): AppReleaseRow {
+        val payload = buildJsonObject {
+            put("version_code", release.versionCode)
+            put("version_name", release.versionName)
+            put("download_url", release.downloadUrl)
+            release.notes?.takeIf { it.isNotBlank() }?.let { put("notes", it) }
+        }
+        val response = raw(
+            "POST",
+            "/rest/v1/$APP_RELEASES_TABLE",
+            headers = postgrestHeaders(accessToken, prefer = "return=representation"),
+            body = jsonBody(json.encodeToString(payload)),
+        )
+        return try {
+            json.decodeFromString<List<AppReleaseRow>>(response).firstOrNull()
+                ?: release
+        } catch (e: SerializationException) {
+            release
+        }
+    }
+
+    suspend fun deleteAppRelease(id: String, accessToken: String) {
+        raw(
+            "DELETE",
+            "/rest/v1/$APP_RELEASES_TABLE?id=eq.${esc(id)}",
+            headers = postgrestHeaders(token = accessToken, prefer = "return=minimal"),
+        )
+    }
+
     suspend fun insertGame(game: GameRow, accessToken: String, userId: String, screenshots: List<String> = emptyList()) {
         val payload = buildJsonObject {
             put("slug", game.slug)

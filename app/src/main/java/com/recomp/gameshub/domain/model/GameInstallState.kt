@@ -55,6 +55,19 @@ object AppVersions {
     fun isSameVersion(a: String?, b: String?): Boolean =
         compare(a, b) == 0
 
+    /**
+     * Derives a comparable numeric code from a version name like "1.2.3"
+     * (major*1_000_000 + minor*1_000 + patch), used to order app releases.
+     */
+    fun versionCodeFromName(versionName: String): Int {
+        val parts = versionName.trim().split('.')
+            .map { it.filter(Char::isDigit).toLongOrNull() ?: 0L }
+            .take(3)
+        val padded = parts + List(3 - parts.size) { 0L }
+        return (padded[0] * 1_000_000L + padded[1] * 1_000L + padded[2])
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+    }
+
     private fun numericSegments(value: String): List<Long>? {
         val parsed = value.split('.').mapNotNull { it.toLongOrNull() }
         return parsed.takeIf { it.isNotEmpty() }

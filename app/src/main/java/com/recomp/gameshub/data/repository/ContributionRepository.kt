@@ -2,11 +2,14 @@ package com.recomp.gameshub.data.repository
 
 import com.recomp.gameshub.data.remote.supabase.GameRow
 import com.recomp.gameshub.data.remote.GithubReleaseApi
+import com.recomp.gameshub.data.remote.supabase.AppReleaseRow
 import com.recomp.gameshub.data.remote.supabase.SupabaseApi
 import com.recomp.gameshub.data.remote.supabase.toSubmission
+import com.recomp.gameshub.domain.model.AppUpdateInfo
 import com.recomp.gameshub.domain.model.AuthException
 import com.recomp.gameshub.domain.model.AuthState
 import com.recomp.gameshub.domain.model.AdminPromotionResult
+import com.recomp.gameshub.domain.model.AppVersions
 import com.recomp.gameshub.domain.model.GameSubmission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -110,6 +113,45 @@ class ContributionRepository(
             val token = requireToken()
             api.isPrincipalAdmin(token)
         }
+
+    // ---------- App update (Recomp Hub) ----------
+
+    suspend fun latestAppRelease(): Result<AppUpdateInfo?> =
+        runCatching {
+            api.fetchLatestAppRelease()?.toUpdateInfo()
+        }
+
+    suspend fun publishAppRelease(
+        versionName: String,
+        downloadUrl: String,
+        notes: String?,
+    ): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.insertAppRelease(
+                AppReleaseRow(
+                    versionCode = AppVersions.versionCodeFromName(versionName),
+                    versionName = versionName.trim(),
+                    downloadUrl = downloadUrl.trim(),
+                    notes = notes?.trim()?.takeIf { it.isNotBlank() },
+                ),
+                token,
+            )
+        }
+
+    suspend fun deleteAppRelease(id: String): Result<Unit> =
+        runCatching {
+            val token = requireToken(admin = true)
+            api.deleteAppRelease(id, token)
+        }
+
+    private fun AppReleaseRow.toUpdateInfo() = AppUpdateInfo(
+        versionCode = versionCode,
+        versionName = versionName,
+        downloadUrl = downloadUrl,
+        notes = notes,
+        publishedAt = createdAt,
+    )
 
     private fun GameSubmission.toRow(): GameRow =
         GameRow(

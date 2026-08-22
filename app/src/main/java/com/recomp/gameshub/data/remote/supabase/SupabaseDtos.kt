@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 const val GAMES_TABLE = "games"
 const val SCREENSHOTS_TABLE = "game_screenshots"
 const val PROFILES_TABLE = "profiles"
+const val APP_RELEASES_TABLE = "app_releases"
 
 const val REVIEW_PENDING = "pending"
 const val REVIEW_APPROVED = "approved"
@@ -70,4 +71,15 @@ data class PromoteAdminDto(
     val ok: Boolean = false,
     val code: String = "",
     val message: String? = null,
+)
+
+@Serializable
+data class AppReleaseRow(
+    val id: String? = null,
+    @SerialName("version_code") val versionCode: Int = 0,
+    @SerialName("version_name") val versionName: String = "",
+    @SerialName("download_url") val downloadUrl: String = "",
+    val notes: String? = null,
+    @SerialName("published_by") val publishedBy: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
 )
