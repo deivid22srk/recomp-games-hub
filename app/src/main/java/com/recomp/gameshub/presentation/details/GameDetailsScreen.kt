@@ -162,10 +162,15 @@ fun GameDetailsScreen(
                 DetailBottomBar(
                     task = downloadTask,
                     installState = installState,
+                    latestUrl = releases.firstOrNull()?.apk?.downloadUrl,
                     onStart = {
                         val latest = releases.firstOrNull()
                         if (releases.size > 1) showReleasePicker = true
                         else viewModel.startDownload(latest?.apk?.downloadUrl, latest?.apk?.size)
+                    },
+                    onUpdate = {
+                        val latest = releases.firstOrNull()
+                        viewModel.startDownload(latest?.apk?.downloadUrl, latest?.apk?.size)
                     },
                     onPause = viewModel::pause,
                     onResume = viewModel::resume,
@@ -603,7 +608,9 @@ private fun DetailsSkeleton() {
 private fun DetailBottomBar(
     task: com.recomp.gameshub.domain.model.DownloadTask?,
     installState: GameInstallState,
+    latestUrl: String?,
     onStart: () -> Unit,
+    onUpdate: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -625,28 +632,24 @@ private fun DetailBottomBar(
     ) {
         val installedState = installState as? GameInstallState.Installed
         val updateScenario = installedState != null && !installedState.isUpToDate
+        val taskIsLatest = task != null && task.url == latestUrl
         if (task != null && !(installedState != null &&
                 installedState.isUpToDate && task.phase == DownloadPhase.COMPLETED)
         ) {
             if (updateScenario && task.phase == DownloadPhase.COMPLETED) {
-                // Atualização baixada: o banner vira o botão "Atualizar" e,
-                // como o app já está instalado, dispensa o botão "Instalar".
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    UpdateBanner(state = installedState, onClick = onInstall)
-                    FilledTonalButton(
-                        onClick = onOpenGame,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = MaterialTheme.shapes.large,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Abrir app")
+                if (taskIsLatest) {
+                    // A versão mais recente já foi baixada: o banner vira o botão
+                    // "Atualizar" que instala (o app já instalado é atualizado).
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        UpdateBanner(state = installedState, onClick = onInstall)
+                        OpenAppButton(onOpenGame)
+                    }
+                } else {
+                    // A task COMPLETED é de uma versão antiga (a que já está
+                    // instalada). Ignorá-la e baixar a atualização mais recente.
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        UpdateBanner(state = installedState, onClick = onUpdate)
+                        OpenAppButton(onOpenGame)
                     }
                 }
             } else {
@@ -657,7 +660,7 @@ private fun DetailBottomBar(
                             onClick = when (task.phase) {
                                 DownloadPhase.FAILED -> onRetry
                                 DownloadPhase.PAUSED -> onResume
-                                DownloadPhase.CANCELLED -> if (downloadEnabled) onStart else null
+                                DownloadPhase.CANCELLED -> if (downloadEnabled) onUpdate else null
                                 else -> null
                             },
                         )
@@ -674,24 +677,8 @@ private fun DetailBottomBar(
                         downloadEnabled = downloadEnabled,
                         installLabel = if (updateScenario) "Atualizar" else "Instalar",
                     )
-                    // Durante uma atualização o jogo continua utilizável:
-                    // mantém o acesso rápido ao app já instalado.
                     if (installedState != null) {
-                        FilledTonalButton(
-                            onClick = onOpenGame,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = MaterialTheme.shapes.large,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Abrir app")
-                        }
+                        OpenAppButton(onOpenGame)
                     }
                 }
             }
@@ -699,7 +686,7 @@ private fun DetailBottomBar(
             if (installedState.isUpToDate) {
                 InstalledStatusBar(state = installedState, onOpenGame = onOpenGame)
             } else {
-                UpdateStatusBar(state = installedState, onUpdate = onStart, onOpenGame = onOpenGame)
+                UpdateStatusBar(state = installedState, onUpdate = onUpdate, onOpenGame = onOpenGame)
             }
         } else {
             DownloadControl(
@@ -714,6 +701,25 @@ private fun DetailBottomBar(
                 downloadEnabled = downloadEnabled,
             )
         }
+    }
+}
+
+@Composable
+private fun OpenAppButton(onOpenGame: () -> Unit) {
+    FilledTonalButton(
+        onClick = onOpenGame,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.PlayArrow,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text("Abrir app")
     }
 }
 
