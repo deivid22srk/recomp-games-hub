@@ -136,10 +136,6 @@ suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Resul
                 index.size
             }
         }
-                }
-                index.size
-            }
-        }
 
     /**
      * Atualiza o Room a partir do repositório local ativo (após adicionar,
