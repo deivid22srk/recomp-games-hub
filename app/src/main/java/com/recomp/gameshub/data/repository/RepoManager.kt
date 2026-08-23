@@ -33,6 +33,10 @@ class RepoManager(
 
     suspend fun installedVersion(): String? = repoRepository.currentInstalledVersion()
 
+    suspend fun recordInstalledVersion(version: String) {
+        repoRepository.saveInstalledVersion(version)
+    }
+
     /**
      * Primeira configuração: baixa o índice do repositório e as metadatas de
      * cada jogo e alimenta o catálogo local. Grava a versão instalada.
@@ -97,11 +101,12 @@ class RepoManager(
      * metadados de cada jogo) e os grava como um repositório local editável.
      * Útil para "continuar de um repositório" e depois editar os jogos.
      */
-    suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Result<Int> =
+suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Result<Int> =
         withContext(Dispatchers.IO) {
             runCatching {
                 if (!targetDir.exists()) targetDir.mkdirs()
                 val gamesDir = File(targetDir, "games")
+                if (gamesDir.exists()) gamesDir.deleteRecursively()
                 if (!gamesDir.exists()) gamesDir.mkdirs()
 
                 val manifest = repoApi.fetchManifest(config)
@@ -112,7 +117,7 @@ class RepoManager(
                 val index = repoApi.fetchIndex(config)
                 File(targetDir, repoApi.indexFileName).writeText(
                     json.encodeToString(
-                        com.recomp.gameshub.data.remote.RepoIndexDto(
+                        RepoIndexDto(
                             generated = java.time.Instant.now().toString(),
                             games = index,
                         )
@@ -126,6 +131,11 @@ class RepoManager(
                             if (!gameDir.exists()) gameDir.mkdirs()
                             File(gameDir, "metadata.json").writeText(json.encodeToString(meta))
                         }
+                }
+                repoRepository.saveInstalledVersion(manifest.version)
+                index.size
+            }
+        }
                 }
                 index.size
             }

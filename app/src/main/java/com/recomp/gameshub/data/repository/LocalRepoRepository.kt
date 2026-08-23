@@ -56,6 +56,10 @@ class LocalRepoRepository(
     suspend fun createLocalRepo(dir: File): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (!dir.exists()) dir.mkdirs()
+            val indexFile = File(dir, indexFileName)
+            if (indexFile.exists() && listLocalGames(dir).getOrNull()?.isNotEmpty() == true) {
+                throw IllegalStateException("Já existe um repositório local com dados. Use Gerenciar jogos para editar.")
+            }
             val gamesDir = File(dir, "games")
             if (!gamesDir.exists()) gamesDir.mkdirs()
             val manifest = RepoManifestDto(
@@ -100,8 +104,11 @@ class LocalRepoRepository(
     /** Atualiza um jogo existente no repositório local. */
     suspend fun updateLocalGame(dir: File, slug: String, draft: LocalGameDraft): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val newSlug = slugify(draft.slug)
-            if (newSlug.isEmpty()) throw IllegalArgumentException("Slug inválido.")
+            val newSlug = slugify(draft.slug.ifBlank { draft.name })
+            if (newSlug.isEmpty()) throw IllegalArgumentException("Slug inválido. Informe um nome válido.")
+            if (slug != newSlug && File(dir, "games/$newSlug/metadata.json").exists()) {
+                throw IllegalArgumentException("Já existe um jogo com o slug «$newSlug».")
+            }
             if (slug != newSlug) {
                 File(dir, "games/$slug").deleteRecursively()
             }
@@ -153,7 +160,13 @@ class LocalRepoRepository(
     }
 
     private fun slugify(value: String): String =
-        value.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        normalize(value.lowercase().trim())
+            .replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+    private fun normalize(value: String): String {
+        val nfd = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+        return nfd.replace(Regex("\\p{M}"), "")
+    }
 
     /** Remove um jogo do repositório local. */
     suspend fun removeLocalGame(dir: File, slug: String): Result<Unit> = withContext(Dispatchers.IO) {

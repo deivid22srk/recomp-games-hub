@@ -34,6 +34,8 @@ class GithubPublishApi(
     /**
      * Cria ou atualiza um arquivo em [path] (ex.: "index.json", "games/foo/metadata.json").
      * [content] é enviado como texto; a API codifica em base64.
+     * Consulta o arquivo existente primeiro para incluir o `sha` (a Contents API
+     * exige `sha` ao atualizar um arquivo que já existe no repositório).
      */
     suspend fun putFile(
         config: RepoConfig,
@@ -42,11 +44,13 @@ class GithubPublishApi(
         content: String,
         message: String,
     ): GithubContentResponse = withContext(Dispatchers.IO) {
+        val existing = fetchExisting(config, accessToken, path)
         val base64 = Base64.getEncoder().encodeToString(content.toByteArray(Charsets.UTF_8))
         val payload = buildString {
             append("{\"message\":").append(json.encodeToString(message))
             append(",\"content\":").append(json.encodeToString(base64))
             append(",\"branch\":").append(json.encodeToString(config.branch))
+            existing?.let { append(",\"sha\":").append(json.encodeToString(it)) }
             append("}")
         }
         val request = Request.Builder()
@@ -65,6 +69,34 @@ class GithubPublishApi(
             }
             runCatching { json.decodeFromString<GithubContentResponse>(body) }
                 .getOrElse { GithubContentResponse() }
+        }
+    }
+
+    /**
+     * Consulta o sha de um arquivo existente no repositório. Retorna null se o
+     * arquivo ainda não existe (HTTP 404) — nesse caso o PUT deve criar.
+     */
+    private suspend fun fetchExisting(
+        config: RepoConfig,
+        accessToken: String,
+        path: String,
+    ): String? = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("https://api.github.com/repos/${config.owner}/${config.repo}/contents/$path")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Accept", "application/vnd.github+json")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            when {
+                response.code == 404 -> null
+                !response.isSuccessful -> throw IOException(
+                    "Não foi possível verificar «$path» (HTTP ${response.code})."
+                )
+                else -> runCatching {
+                    json.decodeFromString<GithubContentResponse>(response.body?.string() ?: "").sha
+                }.getOrNull()
+            }
         }
     }
 

@@ -63,6 +63,8 @@ class RepoEditorViewModel(
     val editingSlug: StateFlow<String?> = _editingSlug.asStateFlow()
     private val _editingDraft = MutableStateFlow<LocalGameDraft?>(null)
     val editingDraft: StateFlow<LocalGameDraft?> = _editingDraft.asStateFlow()
+    private val _addingForm = MutableStateFlow(false)
+    val addingForm: StateFlow<Boolean> = _addingForm.asStateFlow()
 
     fun navigateTo(section: RepoSection) { _section.value = section }
 
@@ -112,6 +114,7 @@ class RepoEditorViewModel(
                 .onSuccess {
                     repoRepository.save(localRepoRepository.localConfig(localRepoRepository.defaultLocalPath()))
                     repoManager.syncFromLocal()
+                    repoManager.recordInstalledVersion("1.0.0")
                     _state.value = RepoOpState.Success("Repositório local criado e ativado.")
                 }
                 .onFailure {
@@ -122,10 +125,19 @@ class RepoEditorViewModel(
 
     // --- MANAGE GAMES ---
     fun startEdit(slug: String) {
+        _state.value = RepoOpState.Idle
         viewModelScope.launch {
             _editingSlug.value = slug
-            val meta = localRepoRepository.getLocalGame(localRepoRepository.defaultDir, slug)
-                .getOrNull() ?: return@launch
+            val result = localRepoRepository.getLocalGame(localRepoRepository.defaultDir, slug)
+            val meta = result.getOrNull()
+            if (meta == null) {
+                _editingSlug.value = null
+                _state.value = RepoOpState.Error(
+                    result.exceptionOrNull()?.message
+                        ?: "Não foi possível carregar os dados deste jogo. Baixe um repositório local primeiro."
+                )
+                return@launch
+            }
             _editingDraft.value = LocalGameDraft(
                 slug = meta.slug,
                 name = meta.name,
@@ -168,6 +180,7 @@ class RepoEditorViewModel(
             localRepoRepository.addLocalGame(localRepoRepository.defaultDir, draft)
                 .onSuccess {
                     repoManager.syncFromLocal()
+                    _addingForm.value = false
                     _state.value = RepoOpState.Success("«${draft.name}» adicionado.")
                 }
                 .onFailure {
@@ -175,6 +188,10 @@ class RepoEditorViewModel(
                 }
         }
     }
+
+    fun startAdd() { _addingForm.value = true }
+
+    fun cancelAdd() { _addingForm.value = false }
 
     fun deleteGame(slug: String, name: String) {
         _state.value = RepoOpState.Loading
@@ -229,14 +246,20 @@ class RepoEditorViewModel(
 
     companion object {
         fun parseRepoUrl(url: String): RepoConfig? {
-            val match = Regex("https?://github\\.com/([^/]+)/([^/]+)")
-                .find(url.trim().removeSuffix("/"))
-                ?: return null
+            val trimmed = url.trim().removeSuffix("/").removeSuffix(".git")
+            if (trimmed.contains("?") || trimmed.contains("#")) return null
+            val match = Regex(
+                "https?://github\\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?"
+            ).matchEntire(trimmed) ?: return null
+            val owner = match.groupValues[1].takeIf { it.isNotBlank() } ?: return null
+            val repo = match.groupValues[2].takeIf { it.isNotBlank() } ?: return null
+            val branch = match.groupValues[3].takeIf { it.isNotBlank() }
+                ?: com.recomp.gameshub.BuildConfig.DATA_BRANCH
             return RepoConfig(
                 sourceType = RepoSourceType.GITHUB_URL,
-                owner = match.groupValues[1],
-                repo = match.groupValues[2].removeSuffix(".git"),
-                branch = "main",
+                owner = owner,
+                repo = repo,
+                branch = branch,
             )
         }
     }

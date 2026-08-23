@@ -1,6 +1,5 @@
 package com.recomp.gameshub.presentation.repo
 
-import com.recomp.gameshub.data.repository.LocalGameDraft
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -37,33 +36,21 @@ fun buildAiPrompt(repositoryUrl: String): String =
  * quando o JSON é inválido; campos ausentes/null viram valores vazios.
  */
 fun parseAiFill(raw: String): Result<AiGameFill> {
-    val trimmed = raw.trim()
-        .removePrefix("```json").removePrefix("```")
-        .removeSuffix("```")
-        .trim()
+    val block = Regex("```(?:[a-zA-Z]*)?\\s*([\\s\\S]*?)```").find(raw)?.groupValues?.get(1)
+    var candidate = (block ?: raw).trim()
+    // Fallback: extrair do primeiro "{" ao último "}" (cobre texto antes/depois).
+    val firstBrace = candidate.indexOf('{')
+    val lastBrace = candidate.lastIndexOf('}')
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+        candidate = candidate.substring(firstBrace, lastBrace + 1)
+    }
     return runCatching {
         Json { ignoreUnknownKeys = true; coerceInputValues = true }
-            .decodeFromString<AiGameFill>(trimmed)
+            .decodeFromString<AiGameFill>(candidate)
     }.mapError { error ->
         "JSON inválido. Verifique se a resposta da IA está no formato pedido.\n\n${error.message ?: "Erro de parsing"}"
     }
 }
-
-fun AiGameFill.toDraft(slug: String): LocalGameDraft = LocalGameDraft(
-    slug = slug,
-    name = name.orEmpty(),
-    description = description.orEmpty(),
-    originalPlatform = platform?.takeIf { it.isNotBlank() },
-    author = author?.takeIf { it.isNotBlank() },
-    sourceRepo = repository?.takeIf { it.isNotBlank() },
-    version = null,
-    downloadUrl = null,
-    fileSizeBytes = 0L,
-    tags = tags.orEmpty(),
-    coverUrl = coverUrl?.takeIf { it.isNotBlank() },
-    bannerUrl = bannerUrl?.takeIf { it.isNotBlank() },
-    screenshots = screenshots.orEmpty().filter { it.isNotBlank() },
-)
 
 private fun <T> Result<T>.mapError(f: (Throwable) -> String): Result<T> =
     this.fold(onSuccess = { Result.success(it) }, onFailure = { Result.failure(Exception(f(it))) })
