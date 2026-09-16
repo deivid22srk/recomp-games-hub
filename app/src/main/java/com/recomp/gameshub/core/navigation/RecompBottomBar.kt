@@ -33,7 +33,10 @@ fun RecompBottomBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
 ) {
-    NavigationBar(tonalElevation = 3.dp) {
+    NavigationBar(
+        tonalElevation = 0.dp,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
         BottomNavItems.all.forEach { item ->
             val selected = item.route == currentRoute
             NavigationBarItem(
@@ -44,6 +47,8 @@ fun RecompBottomBar(
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                 ),
             )
