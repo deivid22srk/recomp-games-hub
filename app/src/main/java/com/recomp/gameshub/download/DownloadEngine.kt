@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -151,7 +152,7 @@ class DownloadEngine(
         val response = try {
             call.await()
         } catch (e: IOException) {
-            if (!isActive) return SegmentResult.CANCELLED
+            if (!coroutineContext.isActive) return SegmentResult.CANCELLED
             val current = repository.task(id)
             when {
                 current == null -> return SegmentResult.CANCELLED
@@ -162,12 +163,12 @@ class DownloadEngine(
                 }
             }
         } catch (e: Exception) {
-            if (!isActive) return SegmentResult.CANCELLED
+            if (!coroutineContext.isActive) return SegmentResult.CANCELLED
             repository.setPhase(id, DownloadPhase.FAILED, e.message ?: "Erro inesperado ao conectar")
             return SegmentResult.FAILED
         }
 
-        response.use { resp ->
+        return response.use { resp ->
             val accepted = resp.isSuccessful || resp.code == 206
             if (!accepted) {
                 repository.setPhase(
@@ -219,7 +220,7 @@ class DownloadEngine(
 
             try {
                 while (true) {
-                    if (!isActive) {
+                    if (!coroutineContext.isActive) {
                         call.cancel()
                         return SegmentResult.CANCELLED
                     }
@@ -235,7 +236,7 @@ class DownloadEngine(
                     val n = try {
                         stream.read(buffer)
                     } catch (e: IOException) {
-                        if (!isActive) return SegmentResult.CANCELLED
+                        if (!coroutineContext.isActive) return SegmentResult.CANCELLED
                         val state = repository.task(id)
                         when {
                             state == null -> return SegmentResult.CANCELLED

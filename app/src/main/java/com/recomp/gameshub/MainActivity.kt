@@ -59,19 +59,19 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(darkTheme) {
                 enableEdgeToEdge(
                     statusBarStyle = if (darkTheme) {
-                        SystemBarStyle.dark(Color.TRANSPARENT.toArgb())
+                        SystemBarStyle.dark(Color.Transparent.toArgb())
                     } else {
                         SystemBarStyle.light(
-                            Color.TRANSPARENT.toArgb(),
-                            Color.TRANSPARENT.toArgb(),
+                            Color.Transparent.toArgb(),
+                            Color.Transparent.toArgb(),
                         )
                     },
                     navigationBarStyle = if (darkTheme) {
-                        SystemBarStyle.dark(Color.TRANSPARENT.toArgb())
+                        SystemBarStyle.dark(Color.Transparent.toArgb())
                     } else {
                         SystemBarStyle.light(
-                            Color.TRANSPARENT.toArgb(),
-                            Color.TRANSPARENT.toArgb(),
+                            Color.Transparent.toArgb(),
+                            Color.Transparent.toArgb(),
                         )
                     },
                 )
