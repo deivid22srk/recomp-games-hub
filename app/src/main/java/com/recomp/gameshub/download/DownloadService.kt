@@ -26,6 +26,7 @@ class DownloadService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var collectorJob: Job? = null
     private var startedForeground = false
+    private val postedActiveIds = mutableSetOf<Int>()
 
     private val notifier by lazy { DownloadNotifier(applicationContext) }
     private val engine by lazy { (application as RecompApplication).container.downloadEngine }
@@ -97,7 +98,16 @@ class DownloadService : Service() {
             .setOnlyAlertOnce(true)
             .build()
 
-    private suspend fun refreshNotifications(active: List<com.recomp.gameshub.domain.model.DownloadTask>, others: List<com.recomp.gameshub.domain.model.DownloadTask>) {
+    private suspend fun refreshNotifications(active: List<DownloadTask>, others: List<DownloadTask>) {
+        // Cancela notificações de progresso de tasks que saíram da lista ativa,
+        // evitando notificações "baixando" órfãs que nunca somem.
+        val currentIds = active.map { notificationId(it.id) }.toSet()
+        synchronized(postedActiveIds) {
+            (postedActiveIds - currentIds).forEach { notifier.cancelNotification(it) }
+            postedActiveIds.clear()
+            postedActiveIds.addAll(currentIds)
+        }
+
         if (active.isEmpty()) {
             // StateFlow starts with an empty value while its upstream is being
             // connected. Do not tear down the foreground service if the real
@@ -141,7 +151,7 @@ class DownloadService : Service() {
         }
     }
 
-    private fun notifyNonActive(task: com.recomp.gameshub.domain.model.DownloadTask) {
+    private fun notifyNonActive(task: DownloadTask) {
         val notifId = notificationId(task.id) + 1_000
         val notification = when (task.phase) {
             DownloadPhase.COMPLETED -> notifier.completedNotification(task)

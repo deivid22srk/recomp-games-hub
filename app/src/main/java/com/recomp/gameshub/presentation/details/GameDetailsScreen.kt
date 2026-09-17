@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -67,14 +68,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.recomp.gameshub.BuildConfig
 import com.recomp.gameshub.core.designsystem.DownloadControl
 import com.recomp.gameshub.core.designsystem.ErrorStateBox
 import com.recomp.gameshub.core.designsystem.GameCoverImage
+import com.recomp.gameshub.core.designsystem.InfoBanner
 import com.recomp.gameshub.core.designsystem.RecompStatusBadge
 import com.recomp.gameshub.core.designsystem.SectionHeader
 import com.recomp.gameshub.core.designsystem.ShimmerBox
 import com.recomp.gameshub.core.navigation.appViewModel
+import com.recomp.gameshub.core.util.CoverResolver
 import com.recomp.gameshub.core.util.formatBytes
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.GameDetail
@@ -101,6 +103,7 @@ fun GameDetailsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadTask by viewModel.downloadTask.collectAsStateWithLifecycle()
     val releases by viewModel.releases.collectAsStateWithLifecycle()
+    val releaseError by viewModel.releaseError.collectAsStateWithLifecycle()
     val installState by viewModel.installState.collectAsStateWithLifecycle()
     var showReleasePicker by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
@@ -120,16 +123,34 @@ fun GameDetailsScreen(
     ) {
         when {
             uiState.error != null && uiState.detail == null -> {
-                ErrorStateBox(
-                    message = uiState.error ?: "Erro ao carregar os detalhes",
-                    onRetry = viewModel::ensureDetail,
-                    modifier = Modifier.align(Alignment.Center),
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ErrorStateBox(
+                        message = uiState.error ?: "Erro ao carregar os detalhes",
+                        onRetry = viewModel::ensureDetail,
+                    )
+                }
+                BackButton(
+                    onClose = onClose,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(16.dp),
                 )
-                BackButton(onClose = onClose, modifier = Modifier.align(Alignment.TopStart))
             }
             uiState.detail == null -> {
                 DetailsSkeleton()
-                BackButton(onClose = onClose, modifier = Modifier.align(Alignment.TopStart))
+                BackButton(
+                    onClose = onClose,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(16.dp),
+                )
             }
             else -> {
                 val detail = uiState.detail!!
@@ -145,7 +166,7 @@ fun GameDetailsScreen(
                             .padding(horizontal = 20.dp),
                     ) {
                         GameCoverImage(
-                            url = resolved(detail, slug, detail.cover),
+                            url = CoverResolver.resolve(slug, detail.cover),
                             contentDescription = detail.summary.name,
                             modifier = Modifier
                                 .offset(y = (-72).dp)
@@ -156,6 +177,15 @@ fun GameDetailsScreen(
                         )
                     }
                     Spacer(Modifier.height(60.dp))
+                    // Falha ao buscar releases (ex.: rate limit do GitHub): avisa
+                    // sem bloquear o download pelo link do catálogo.
+                    if (releases.isEmpty() && releaseError != null) {
+                        InfoBanner(
+                            message = "Não foi possível verificar atualizações: $releaseError",
+                            isError = false,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                    }
                     DetailContent(detail = detail, onShare = viewModel::share, onOpenSource = viewModel::openSource, installState = installState)
                 }
 
@@ -177,7 +207,6 @@ fun GameDetailsScreen(
                     onCancel = viewModel::cancel,
                     onRetry = viewModel::retry,
                     onInstall = viewModel::install,
-                    onDelete = { downloadTask?.let { viewModel.cancel() } },
                     onOpenGame = viewModel::openGame,
                     downloadEnabled = hasDownloadUrl,
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -207,7 +236,10 @@ private fun ReleasePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("Escolha a versão para baixar") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
                 releases.forEachIndexed { index, release ->
                     FilledTonalButton(onClick = { onSelect(release) }, modifier = Modifier.fillMaxWidth()) {
                         Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
@@ -223,16 +255,6 @@ private fun ReleasePickerDialog(
 }
 
 @Composable
-private fun resolved(detail: GameDetail, slug: String, path: String?): String? =
-    when {
-        path.isNullOrBlank() -> null
-        path.startsWith("http://") || path.startsWith("https://") -> path
-        else -> "https://raw.githubusercontent.com/" +
-            "${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}/${BuildConfig.DATA_BRANCH}" +
-            "/games/$slug/$path"
-    }
-
-@Composable
 private fun HeroBanner(
     detail: GameDetail,
     onClose: () -> Unit,
@@ -240,7 +262,7 @@ private fun HeroBanner(
 ) {
     Box(modifier = Modifier.fillMaxWidth()) {
         GameCoverImage(
-            url = resolved(detail, slug, detail.banner),
+            url = CoverResolver.resolve(slug, detail.banner),
             contentDescription = null,
             modifier = Modifier
                 .fillMaxWidth()
@@ -264,6 +286,9 @@ private fun HeroBanner(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // statusBarsPadding evita que o botão Voltar colida com a
+                // status bar/cutout no modo edge-to-edge.
+                .statusBarsPadding()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -543,7 +568,7 @@ private fun ScreenshotsCarousel(
         modifier = Modifier.fillMaxWidth(),
     ) { page ->
         GameCoverImage(
-            url = resolved(detail, slug, detail.screenshots[page]),
+            url = CoverResolver.resolve(slug, detail.screenshots[page]),
             contentDescription = "Captura ${page + 1}",
             modifier = Modifier
                 .fillMaxWidth()
@@ -616,7 +641,6 @@ private fun DetailBottomBar(
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onInstall: () -> Unit,
-    onDelete: () -> Unit,
     onOpenGame: () -> Unit,
     downloadEnabled: Boolean = true,
     modifier: Modifier = Modifier,
@@ -673,7 +697,6 @@ private fun DetailBottomBar(
                         onCancel = onCancel,
                         onRetry = onRetry,
                         onInstall = onInstall,
-                        onDelete = onDelete,
                         downloadEnabled = downloadEnabled,
                         installLabel = if (updateScenario) "Atualizar" else "Instalar",
                     )
@@ -697,7 +720,6 @@ private fun DetailBottomBar(
                 onCancel = onCancel,
                 onRetry = onRetry,
                 onInstall = onInstall,
-                onDelete = onDelete,
                 downloadEnabled = downloadEnabled,
             )
         }
@@ -828,7 +850,14 @@ private fun UpdateBanner(
         modifier = Modifier
             .fillMaxWidth()
             .let { base ->
-                if (onClick != null) base.clip(shape).clickable(onClick = onClick) else base
+                if (onClick != null) {
+                    base.clip(shape).clickable(
+                        onClick = onClick,
+                        role = androidx.compose.ui.semantics.Role.Button,
+                    )
+                } else {
+                    base
+                }
             },
     ) {
         Row(

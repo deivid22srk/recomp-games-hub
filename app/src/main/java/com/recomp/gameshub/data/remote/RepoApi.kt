@@ -1,11 +1,11 @@
 package com.recomp.gameshub.data.remote
 
+import com.recomp.gameshub.core.util.GitHubUrls
 import com.recomp.gameshub.domain.model.RepoConfig
 import com.recomp.gameshub.domain.model.RepoSourceType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -48,10 +48,14 @@ class RepoApi(
             json.decodeFromString<RepoIndexDto>(body).games
         }
 
-    suspend fun fetchMetadata(config: RepoConfig, slug: String): GameMetadataDto =
-        readJson(config, "games/$slug/metadata.json") { body ->
+    suspend fun fetchMetadata(config: RepoConfig, slug: String): GameMetadataDto {
+        if (!GitHubUrls.isValidSlug(slug)) {
+            throw IOException("Identificador de jogo inválido: «$slug».")
+        }
+        return readJson(config, "games/$slug/metadata.json") { body ->
             json.decodeFromString<GameMetadataDto>(body)
         }
+    }
 
     /** Resolve um caminho relativo (ex.: banner.png) para uma URL/arquivo utilizável. */
     fun resolve(config: RepoConfig, slug: String, rel: String?): String? {
@@ -80,7 +84,7 @@ class RepoApi(
                 }
             } else {
                 val request = Request.Builder().url(rawUrl(config, path)).build()
-                client.newCall(request).execute().use { response ->
+                client.newCall(request).await().use { response ->
                     if (!response.isSuccessful) {
                         throw IOException(
                             "HTTP ${response.code} ao carregar «$path»" +

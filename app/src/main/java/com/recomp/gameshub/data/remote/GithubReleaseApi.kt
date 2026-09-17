@@ -1,5 +1,6 @@
 package com.recomp.gameshub.data.remote
 
+import com.recomp.gameshub.core.util.GitHubUrls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -47,7 +48,7 @@ class GithubReleaseApi(private val client: OkHttpClient) {
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .build()
-        client.newCall(request).execute().use { response ->
+        client.newCall(request).await().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("Não foi possível carregar as releases do GitHub (HTTP ${response.code}).")
             }
@@ -76,10 +77,9 @@ class GithubReleaseApi(private val client: OkHttpClient) {
 
     companion object {
         fun parseRepository(repositoryUrl: String): Pair<String, String> {
-            val value = repositoryUrl.trim().removeSuffix("/").removeSuffix(".git")
-            val match = Regex("^https?://github\\.com/([^/]+)/([^/]+)(?:/.*)?$").matchEntire(value)
+            val parsed = GitHubUrls.parseOwnerRepo(repositoryUrl)
                 ?: throw IOException("Informe uma URL válida de um repositório do GitHub.")
-            return match.groupValues[1] to match.groupValues[2]
+            return parsed
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.recomp.gameshub.presentation.downloads
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -49,8 +47,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.recomp.gameshub.core.designsystem.AppTopBar
-import com.recomp.gameshub.core.designsystem.CoverFallback
 import com.recomp.gameshub.core.designsystem.EmptyStateBox
+import com.recomp.gameshub.core.designsystem.GameCoverImage
 import com.recomp.gameshub.core.navigation.Routes
 import com.recomp.gameshub.core.navigation.RecompBottomBar
 import com.recomp.gameshub.core.navigation.appViewModel
@@ -64,21 +62,21 @@ import com.recomp.gameshub.domain.model.DownloadTask
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadsRoute(
-    onBack: () -> Unit,
     onOpenCatalog: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val viewModel: DownloadsViewModel = appViewModel {
-        DownloadsViewModel(it.downloadRepository, it.installedGamesRepository, it.appContext)
+        DownloadsViewModel(it.downloadRepository, it.catalogRepository, it.appContext)
     }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val covers by viewModel.covers.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             AppTopBar(
                 title = "Downloads",
-                onBack = onBack,
+                // Tela de aba da bottom bar: sem seta de voltar, igual ao Catálogo.
                 actions = {
                     if (uiState.finished.isNotEmpty() || uiState.active.isNotEmpty()) {
                         TextButton(onClick = viewModel::clearFinished) {
@@ -130,6 +128,7 @@ fun DownloadsRoute(
                 items(uiState.active, key = { it.id }) { task ->
                     ActiveDownloadItem(
                         task = task,
+                        coverUrl = covers[task.id],
                         viewModel = viewModel,
                     )
                 }
@@ -149,7 +148,7 @@ fun DownloadsRoute(
                     SectionLabel("Concluídos", Modifier.padding(bottom = 4.dp))
                 }
                 items(uiState.finished, key = { it.id }) { task ->
-                    FinishedDownloadItem(task = task, viewModel = viewModel)
+                    FinishedDownloadItem(task = task, coverUrl = covers[task.id], viewModel = viewModel)
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -170,6 +169,7 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun ActiveDownloadItem(
     task: DownloadTask,
+    coverUrl: String?,
     viewModel: DownloadsViewModel,
 ) {
     Surface(
@@ -178,10 +178,12 @@ private fun ActiveDownloadItem(
     ) {
         Row(modifier = Modifier.padding(14.dp)) {
             val paused = task.phase == DownloadPhase.PAUSED
-            CoverFallback(
-                key = task.id.hashCode().toLong(),
+            GameCoverImage(
+                url = coverUrl,
+                contentDescription = task.gameName,
                 modifier = Modifier.size(56.dp),
                 shape = RoundedCornerShape(14.dp),
+                fallbackKey = task.id.hashCode().toLong(),
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -219,7 +221,7 @@ private fun ActiveDownloadItem(
                 }
                 FilledTonalIconButton(
                     onClick = { viewModel.cancel(task.id) },
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(Icons.Rounded.Close, contentDescription = "Cancelar")
                 }
@@ -232,7 +234,7 @@ private fun ActiveDownloadItem(
 private fun PauseResumeButton(paused: Boolean, onClick: () -> Unit) {
     FilledTonalIconButton(
         onClick = onClick,
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier.size(48.dp),
     ) {
         Icon(
             imageVector = if (paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
@@ -268,6 +270,7 @@ private fun statusLine(task: DownloadTask): String {
 @Composable
 private fun FinishedDownloadItem(
     task: DownloadTask,
+    coverUrl: String?,
     viewModel: DownloadsViewModel,
 ) {
     val completed = task.phase == DownloadPhase.COMPLETED
@@ -279,10 +282,12 @@ private fun FinishedDownloadItem(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CoverFallback(
-                key = task.id.hashCode().toLong(),
+            GameCoverImage(
+                url = coverUrl,
+                contentDescription = task.gameName,
                 modifier = Modifier.size(56.dp),
                 shape = RoundedCornerShape(14.dp),
+                fallbackKey = task.id.hashCode().toLong(),
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -328,7 +333,7 @@ private fun FinishedDownloadItem(
                     ) {
                         Text("Instalar")
                     }
-                    IconButton(onClick = { viewModel.delete(task.id) }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { viewModel.delete(task.id) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Excluir")
                     }
                 } else {
@@ -341,7 +346,7 @@ private fun FinishedDownloadItem(
                         Spacer(Modifier.width(4.dp))
                         Text("Tentar novamente")
                     }
-                    IconButton(onClick = { viewModel.delete(task.id) }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { viewModel.delete(task.id) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Excluir")
                     }
                 }

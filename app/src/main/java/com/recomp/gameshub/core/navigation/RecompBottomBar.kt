@@ -39,7 +39,9 @@ fun RecompBottomBar(
             NavigationBarItem(
                 selected = selected,
                 onClick = { onNavigate(item.route) },
-                icon = { Icon(imageVector = item.icon, contentDescription = item.label) },
+                // null evita duplicar o label no TalkBack (o NavigationBarItem
+                // já anuncia o label abaixo do ícone).
+                icon = { Icon(imageVector = item.icon, contentDescription = null) },
                 label = { Text(item.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,

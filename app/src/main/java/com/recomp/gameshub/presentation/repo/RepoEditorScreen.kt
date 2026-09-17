@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -129,7 +130,9 @@ fun RepoEditorRoute(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                // Teclado não cobre mais os campos inferiores do formulário.
+                .imePadding(),
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -539,13 +542,17 @@ private fun ManageGamesSection(
     onDelete: (String, String) -> Unit,
 ) {
     if (editingSlug != null && editingDraft != null) {
-        GameForm(
-            title = "Editar jogo",
-            initial = editingDraft,
-            loading = loading,
-            onSave = { draft -> onSaveEdit(editingSlug, draft) },
-            onCancel = onCancelEdit,
-        )
+        // key() destrói o estado do formulário ao trocar de jogo: sem isso,
+        // rememberSaveable restaurava os dados do jogo anterior no formulário.
+        androidx.compose.runtime.key(editingSlug) {
+            GameForm(
+                title = "Editar jogo",
+                initial = editingDraft,
+                loading = loading,
+                onSave = { draft -> onSaveEdit(editingSlug, draft) },
+                onCancel = onCancelEdit,
+            )
+        }
         return
     }
 
@@ -561,13 +568,15 @@ private fun ManageGamesSection(
         }
 
         if (addingForm) {
-            GameForm(
-                title = "Adicionar jogo",
-                initial = LocalGameDraft(slug = "", name = ""),
-                loading = loading,
-                onSave = { draft -> onAdd(draft) },
-                onCancel = onCancelAdd,
-            )
+            androidx.compose.runtime.key("add-game") {
+                GameForm(
+                    title = "Adicionar jogo",
+                    initial = LocalGameDraft(slug = "", name = ""),
+                    loading = loading,
+                    onSave = { draft -> onAdd(draft) },
+                    onCancel = onCancelAdd,
+                )
+            }
             return@Column
         }
 
@@ -752,7 +761,9 @@ private fun GameForm(
             OutlinedTextField(platform, { platform = it }, label = { Text("Plataforma original") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(version, { version = it }, label = { Text("Versão") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(author, { author = it }, label = { Text("Autor") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(sourceRepo, { sourceRepo = it }, label = { Text("Repositório do projeto") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            // O campo "Repositório do projeto" duplicado foi removido: ele
+            // editava o mesmo estado do campo da seção IA acima, confundindo
+            // o usuário ao digitar num e ver o outro mudar.
             OutlinedTextField(downloadUrl, { downloadUrl = it }, label = { Text("URL do APK") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(size, { size = it }, label = { Text("Tamanho (bytes)") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())

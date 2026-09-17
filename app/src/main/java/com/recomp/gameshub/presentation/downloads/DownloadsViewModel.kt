@@ -2,18 +2,18 @@ package com.recomp.gameshub.presentation.downloads
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.recomp.gameshub.core.util.CoverResolver
+import com.recomp.gameshub.data.repository.CatalogRepository
 import com.recomp.gameshub.data.repository.DownloadRepository
-import com.recomp.gameshub.data.repository.InstalledGamesRepository
 import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.download.DownloadService
 import com.recomp.gameshub.download.InstallHelper
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.stateIn
 import java.io.File
 
 data class DownloadsUiState(
@@ -23,7 +23,7 @@ data class DownloadsUiState(
 
 class DownloadsViewModel(
     private val downloadRepository: DownloadRepository,
-    private val installedGamesRepository: InstalledGamesRepository,
+    catalogRepository: CatalogRepository,
     private val context: Context,
 ) : ViewModel() {
 
@@ -35,6 +35,16 @@ class DownloadsViewModel(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DownloadsUiState())
+
+    /** slug → URL da capa, para exibir a capa real do jogo na lista de downloads. */
+    val covers: StateFlow<Map<String, String>> = catalogRepository.observeSummaries()
+        .map { list ->
+            list.mapNotNull { summary ->
+                CoverResolver.resolve(summary.slug, summary.cover)
+                    ?.let { url -> summary.slug to url }
+            }.toMap()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun pause(id: String) = downloadRepository.pause(id)
 
@@ -55,21 +65,12 @@ class DownloadsViewModel(
     fun install(task: DownloadTask) {
         val file = File(task.localPath)
         if (!file.exists()) return
-        viewModelScope.launch {
-            val identity = InstallHelper.readApkIdentity(context, file)
-            if (identity != null && task.id.isNotBlank()) {
-                installedGamesRepository.remember(
-                    slug = task.id,
-                    packageName = identity.packageName,
-                    versionName = identity.versionName,
-                    versionCode = identity.versionCode,
-                )
-            }
-            if (InstallHelper.canRequestInstalls(context)) {
-                InstallHelper.installPackage(context, file)
-            } else {
-                InstallHelper.openInstallPermissionSettings(context)
-            }
+        // O mapeamento slug→pacote é gravado pelo InstallStatusReceiver somente
+        // quando o instalador do sistema confirma sucesso (STATUS_SUCCESS).
+        if (InstallHelper.canRequestInstalls(context)) {
+            InstallHelper.installPackage(context, file, task.id)
+        } else {
+            InstallHelper.openInstallPermissionSettings(context)
         }
     }
 

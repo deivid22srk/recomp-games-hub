@@ -16,6 +16,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE slug = :slug")
     suspend fun get(slug: String): GameEntity?
 
+    @Query("SELECT slug FROM games")
+    suspend fun getAllSlugs(): List<String>
+
     @Upsert
     suspend fun upsert(entity: GameEntity)
 
@@ -46,8 +49,6 @@ interface DownloadDao {
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun delete(id: String)
 
-    @Query("UPDATE downloads SET phase = :phase, errorMessage = NULL WHERE phase IN ('PENDING', 'DOWNLOADING')")
-    suspend fun resetInterrupted(phase: String)
 }
 
 @Dao

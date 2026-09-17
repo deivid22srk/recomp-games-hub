@@ -35,10 +35,11 @@ class ResumeDownloadsWorker(
             // segue sem o serviço em primeiro plano.
         }
 
+        // Restaura as tarefas interrompidas (marca como PENDING). Não iniciamos
+        // o DownloadService daqui: iniciar FGS dataSync em background é bloqueado
+        // no Android 15. Quando o app abrir em primeiro plano, a MainActivity
+        // detecta as tarefas pendentes e aciona o serviço.
         app.container.downloadRepository.restoreInterrupted()
-        if (app.container.downloadRepository.hasPendingWork()) {
-            DownloadService.start(applicationContext)
-        }
         return Result.success()
     }
 

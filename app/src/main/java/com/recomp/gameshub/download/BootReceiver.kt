@@ -14,10 +14,11 @@ class BootReceiver : BroadcastReceiver() {
 
         val app = context.applicationContext as RecompApplication
         app.appScope.launch {
+            // Restaura o estado das tarefas (marca como PENDING). Iniciar um
+            // foreground service dataSync em background é bloqueado a partir do
+            // Android 15; os downloads pendentes retomam sozinhos quando o app
+            // for aberto em primeiro plano (MainActivity aciona o serviço).
             app.container.downloadRepository.restoreInterrupted()
-            if (app.container.downloadRepository.hasPendingWork()) {
-                DownloadService.start(context)
-            }
         }
     }
 }

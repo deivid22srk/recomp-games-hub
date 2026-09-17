@@ -38,11 +38,16 @@ class CatalogRepository(
 
     suspend fun ensureDetail(slug: String) {
         val cached = gameDao.get(slug)
-        if (cached == null || cached.fetchedAt == 0L) {
+        val now = System.currentTimeMillis()
+        // Busca quando: nunca buscou, veio só do índice (sem metadados) ou
+        // expirou o TTL — assim os detalhes não ficam congelados para sempre.
+        val stale = cached == null || cached.fetchedAt == 0L ||
+            now - cached.fetchedAt > DETAIL_TTL_MS
+        if (stale) {
             val config = repoManager.config() ?: defaultConfig()
             runCatching { repoManager.repoApi.fetchMetadata(config, slug) }
                 .getOrNull()?.let { row ->
-                    gameDao.upsert(row.toEntity(fetchedAt = System.currentTimeMillis()))
+                    gameDao.upsert(row.toEntity(fetchedAt = now))
                 }
         }
     }
@@ -58,9 +63,12 @@ class CatalogRepository(
                         game.originalPlatform?.lowercase()?.contains(normalized) == true ||
                         game.version?.lowercase()?.contains(normalized) == true
                 }
-                .take(30)
         }
     }
 
     private fun defaultConfig() = RepoConfig()
+
+    private companion object {
+        const val DETAIL_TTL_MS = 24 * 60 * 60 * 1000L
+    }
 }

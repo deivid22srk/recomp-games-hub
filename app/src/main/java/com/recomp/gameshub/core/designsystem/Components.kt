@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -323,7 +322,6 @@ fun DownloadControl(
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onInstall: () -> Unit,
-    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     downloadEnabled: Boolean = true,
     installLabel: String = "Instalar",
@@ -346,7 +344,7 @@ fun DownloadControl(
                     }
                     DownloadPhase.PENDING, DownloadPhase.DOWNLOADING -> ProgressButton(task)
                     DownloadPhase.PAUSED -> ResumeButton(onResume)
-                    DownloadPhase.COMPLETED -> InstallButton(task, onInstall, installLabel)
+                    DownloadPhase.COMPLETED -> InstallButton(onInstall, installLabel)
                     DownloadPhase.FAILED -> RetryButton(task, onRetry)
                 }
             }
@@ -355,7 +353,7 @@ fun DownloadControl(
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 },
             ) {
-                PauseButton(phase == DownloadPhase.DOWNLOADING, onPause)
+                PauseButton(onPause)
             }
             AnimatedVisibility(
                 visible = phase == DownloadPhase.DOWNLOADING || phase == DownloadPhase.PENDING,
@@ -473,7 +471,7 @@ private fun RetryButton(task: DownloadTask?, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit, label: String) {
+private fun InstallButton(onInstall: () -> Unit, label: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Button(
             onClick = onInstall,
@@ -494,7 +492,7 @@ private fun InstallButton(task: DownloadTask?, onInstall: () -> Unit, label: Str
 }
 
 @Composable
-private fun PauseButton(active: Boolean, onPause: () -> Unit) {
+private fun PauseButton(onPause: () -> Unit) {
     FilledTonalIconButton(
         onClick = onPause,
         modifier = Modifier.size(54.dp),
@@ -512,14 +510,5 @@ private fun CancelButton(onCancel: () -> Unit) {
         shape = MaterialTheme.shapes.large,
     ) {
         Icon(Icons.Filled.Close, contentDescription = "Cancelar")
-    }
-}
-
-@Composable
-fun DeleteDownloadsTextButton(onDelete: () -> Unit) {
-    TextButton(onClick = onDelete) {
-        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(4.dp))
-        Text("Excluir")
     }
 }

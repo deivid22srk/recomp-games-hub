@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.data.repository.CatalogRepository
 import com.recomp.gameshub.domain.model.GameStatus
 import com.recomp.gameshub.domain.model.GameSummary
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +49,7 @@ class CatalogViewModel(
     val isSearching = _isSearching.asStateFlow()
     private val _searchError = MutableStateFlow<String?>(null)
     val searchError = _searchError.asStateFlow()
+    private var searchJob: Job? = null
 
     private val _selectedSlug = MutableStateFlow<String?>(null)
     val selectedSlug = _selectedSlug.asStateFlow()
@@ -59,9 +61,8 @@ class CatalogViewModel(
         _isRefreshing,
         _error,
     ) { list, q, filter, refreshing, error ->
-        val catalog = list.take(30)
         val normalized = q.trim().lowercase()
-        val filtered = catalog.filter { game ->
+        val filtered = list.filter { game ->
             (filter == null || game.status == filter) &&
                 (normalized.isEmpty() || game.name.lowercase().contains(normalized))
         }
@@ -72,7 +73,7 @@ class CatalogViewModel(
             isLoading = !_hasLoadedOnce.value && list.isEmpty() && error == null,
             isRefreshing = refreshing,
             error = error,
-            counts = catalog.groupingBy { it.status }.eachCount(),
+            counts = list.groupingBy { it.status }.eachCount(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CatalogUiState())
 
@@ -90,11 +91,13 @@ class CatalogViewModel(
                 _hasLoadedOnce.value = true
                 _error.value = null
             } else {
-                if (initial && summaries.value.isEmpty()) {
-                    _error.value = result.exceptionOrNull()?.message ?: "Falha ao carregar o catálogo"
-                }
+                _error.value = result.exceptionOrNull()?.message ?: "Falha ao carregar o catálogo"
             }
         }
+    }
+
+    fun dismissError() {
+        _error.value = null
     }
 
     fun setQuery(value: String) {
@@ -113,7 +116,10 @@ class CatalogViewModel(
             _isSearching.value = false
             return
         }
-        viewModelScope.launch {
+        // Cancela a busca anterior: evita que uma resposta antiga e lenta
+        // sobrescreva o resultado de uma busca mais recente.
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _isSearching.value = true
             _searchError.value = null
             repository.search(query)
@@ -127,6 +133,7 @@ class CatalogViewModel(
     }
 
     fun clearSearch() {
+        searchJob?.cancel()
         _searchQuery.value = ""
         _searchResults.value = emptyList()
         _searchError.value = null

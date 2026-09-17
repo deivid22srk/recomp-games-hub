@@ -12,7 +12,11 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val json = Json
+private val json = Json { ignoreUnknownKeys = true }
+
+/** Decodifica listas JSON persistidas no Room; dado corrompido não derruba o catálogo. */
+private fun decodeStringList(raw: String): List<String> =
+    runCatching { json.decodeFromString<List<String>>(raw) }.getOrDefault(emptyList())
 
 fun IndexEntryDto.toEntity(fetchedAt: Long): GameEntity =
     GameEntity(
@@ -73,10 +77,10 @@ fun GameEntity.toDetail(): GameDetail =
         sourceRepo = sourceRepo,
         downloadUrl = downloadUrl,
         fileSizeBytes = fileSizeBytes,
-        tags = json.decodeFromString<List<String>>(tagsJson),
+        tags = decodeStringList(tagsJson),
         banner = banner,
         cover = cover,
-        screenshots = json.decodeFromString<List<String>>(screenshotsJson),
+        screenshots = decodeStringList(screenshotsJson),
         sha256 = null,
         lastUpdated = lastUpdated,
     )

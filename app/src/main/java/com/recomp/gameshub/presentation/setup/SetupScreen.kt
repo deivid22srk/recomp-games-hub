@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,9 +57,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.recomp.gameshub.download.InstallHelper
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.recomp.gameshub.core.navigation.appViewModel
 import com.recomp.gameshub.domain.model.RepoSourceType
@@ -79,15 +81,28 @@ fun SetupRoute(onComplete: () -> Unit) {
 
     val context = LocalContext.current
 
-    val notificationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
     var notificationGranted by remember { mutableStateOf(
         if (Build.VERSION.SDK_INT < 33) true else
             ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
     ) }
+    var installGranted by remember { mutableStateOf(InstallHelper.canRequestInstalls(context)) }
+
+    // Recalcula ao voltar das telas de permissão do sistema (ex.: o usuário
+    // permitiu "instalar apps desconhecidos" e retornou ao app).
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        installGranted = InstallHelper.canRequestInstalls(context)
+        onPauseOrDispose { }
+    }
+
+    // O callback atualiza o estado: antes ele era vazio e o card nunca
+    // mudava para "concedido" mesmo após o usuário aceitar a permissão.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) notificationGranted = true
+    }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 && !notificationGranted) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -130,6 +145,13 @@ fun SetupRoute(onComplete: () -> Unit) {
                     when (current) {
                         SetupStep.PERMISSIONS -> PermissionsStep(
                             notificationGranted = notificationGranted,
+                            installGranted = installGranted,
+                            onRequestNotifications = {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            },
+                            onOpenInstallSettings = {
+                                InstallHelper.openInstallPermissionSettings(context)
+                            },
                         )
                         SetupStep.REPOSITORY -> RepositoryStep(
                             selectedType = selectedType,
@@ -145,6 +167,8 @@ fun SetupRoute(onComplete: () -> Unit) {
                 }
             }
 
+            // Botão full-width com insets de navegação e teclado: antes ele
+            // ficava colado na gesture bar e sob o teclado no passo URL.
             Button(
                 onClick = {
                     when (step) {
@@ -157,8 +181,11 @@ fun SetupRoute(onComplete: () -> Unit) {
                     SetupStep.REPOSITORY -> viewModel.canFinish() && state !is SetupUiState.Loading
                 },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(24.dp)
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                    .navigationBarsPadding()
+                    .imePadding()
                     .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
             ) {
@@ -216,7 +243,12 @@ private fun StepIndicator(current: Int, total: Int, labels: List<String>) {
 }
 
 @Composable
-private fun PermissionsStep(notificationGranted: Boolean) {
+private fun PermissionsStep(
+    notificationGranted: Boolean,
+    installGranted: Boolean,
+    onRequestNotifications: () -> Unit,
+    onOpenInstallSettings: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "Para começar, o Recomp Hub precisa de algumas permissões.",
@@ -229,13 +261,16 @@ private fun PermissionsStep(notificationGranted: Boolean) {
             title = "Notificações",
             description = "Exibe o progresso dos downloads e avisa quando um jogo for baixado.",
             granted = notificationGranted,
+            onClick = if (notificationGranted) null else onRequestNotifications,
         )
         PermissionCard(
             icon = Icons.Rounded.InstallMobile,
             title = "Instalar aplicativos",
             description = "Permite instalar e atualizar jogos diretamente pelo app.",
-            granted = true,
+            granted = installGranted,
+            onClick = if (installGranted) null else onOpenInstallSettings,
         )
+        Spacer(Modifier.height(72.dp))
     }
 }
 
@@ -245,13 +280,22 @@ private fun PermissionCard(
     title: String,
     description: String,
     granted: Boolean,
+    onClick: (() -> Unit)? = null,
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (granted) MaterialTheme.colorScheme.surfaceContainerLow
-                            else MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = if (granted) MaterialTheme.colorScheme.surfaceContainer
+                             else MaterialTheme.colorScheme.surfaceContainerLow,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { base ->
+                if (onClick != null) {
+                    base.clickable(onClick = onClick, role = androidx.compose.ui.semantics.Role.Button)
+                } else {
+                    base
+                }
+            },
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -269,6 +313,15 @@ private fun PermissionCard(
                 Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(description, style = MaterialTheme.typography.bodySmall,
                      color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!granted) {
+                    Text(
+                        text = "Toque para permitir",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
     }
@@ -376,6 +429,9 @@ private fun RepositoryStep(
             }
             else -> Unit
         }
+
+        // Espaço para o botão fixo na base não cobrir o conteúdo rolateável.
+        Spacer(Modifier.height(88.dp))
     }
 }
 

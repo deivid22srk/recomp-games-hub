@@ -45,7 +45,11 @@ object AppVersions {
         val aNorm = installed.lowercase().trim().filter { it.isLetterOrDigit() }
         val bNorm = target.lowercase().trim().filter { it.isLetterOrDigit() }
         if (aNorm == bNorm) return 0
-        if (installed.any { it.isDigit() } && target.any { it.isDigit() }) return -1
+        if (installed.any { it.isDigit() } && target.any { it.isDigit() }) {
+            // Fallback determinístico: compara os números extraíveis das versões
+            // em vez de presumir que a instalada é sempre mais antiga.
+            return versionCodeFromName(installed).compareTo(versionCodeFromName(target))
+        }
         return 0
     }
 

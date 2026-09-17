@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DownloadRepository(
     private val dao: DownloadDao,
@@ -26,10 +28,9 @@ class DownloadRepository(
     private val appScope: CoroutineScope,
 ) {
     private val _tasks = MutableStateFlow<Map<String, DownloadTask>>(emptyMap())
-    private val _lastPersist = HashMap<String, Long>()
+    private val _lastPersist = ConcurrentHashMap<String, Long>()
 
-    @Volatile
-    private var restored = false
+    private val restored = AtomicBoolean(false)
 
     var onChanged: (() -> Unit)? = null
         private set
@@ -54,8 +55,7 @@ class DownloadRepository(
     fun hasPendingWork(): Boolean = _tasks.value.values.any { it.phase == DownloadPhase.PENDING }
 
     suspend fun restoreInterrupted() {
-        if (restored) return
-        restored = true
+        if (!restored.compareAndSet(false, true)) return
         val entities = dao.observeAll().first()
         val now = System.currentTimeMillis()
         val loaded = entities.map { entity ->
@@ -70,23 +70,25 @@ class DownloadRepository(
         onChanged?.invoke()
     }
 
-    fun enqueue(detail: GameDetail, expectedSizeBytes: Long? = null): DownloadTask {
+    /** Enfileira um download; retorna null quando o detalhe não possui URL válida. */
+    fun enqueue(detail: GameDetail, expectedSizeBytes: Long? = null): DownloadTask? {
         val slug = detail.summary.slug
-        val url = detail.downloadUrl ?: return _tasks.value[slug] ?: noUrlTask()
+        val url = detail.downloadUrl ?: return _tasks.value[slug]
         val existing = _tasks.value[slug]
-        if (existing != null && existing.isActive) return existing
-        // Retomar só é seguro com o mesmo artefato; ao trocar de versão o arquivo
-        // parcial seria misturado por causa do Range, então recomeça do zero.
-        val sameArtifact = existing != null && existing.url == url
-        if (existing != null && existing.phase == DownloadPhase.PAUSED && sameArtifact) {
-            resume(existing.id, url)
-            return _tasks.value[slug]!!
+        if (existing != null && existing.isActive && existing.phase != DownloadPhase.PAUSED) return existing
+        if (existing != null && existing.phase == DownloadPhase.PAUSED) {
+            if (existing.url == url) {
+                resume(existing.id, url)
+                return _tasks.value[slug]
+            }
+            // Versão diferente da pausada: descarta o parcial e recomeça do
+            // zero com a nova URL (retomar misturaria os arquivos via Range).
+            File(existing.localPath).delete()
+            _tasks.update { it - slug }
+            appScope.launch(Dispatchers.IO) { dao.delete(slug) }
         }
         val fileName = fileNameFor(detail)
         val file = File(downloadsDir, fileName)
-        if (!sameArtifact || existing?.phase == DownloadPhase.COMPLETED) {
-            file.delete()
-        }
         val task = DownloadTask(
             id = slug,
             gameName = detail.summary.name,
@@ -94,7 +96,7 @@ class DownloadRepository(
             localPath = file.absolutePath,
             fileName = fileName,
             totalBytes = expectedSizeBytes ?: detail.fileSizeBytes,
-            downloadedBytes = if (sameArtifact && file.exists()) file.length() else 0L,
+            downloadedBytes = 0L,
             phase = DownloadPhase.PENDING,
             addedAt = System.currentTimeMillis(),
         )
@@ -103,19 +105,6 @@ class DownloadRepository(
         onChanged?.invoke()
         return task
     }
-
-    private fun noUrlTask(): DownloadTask =
-        DownloadTask(
-            id = "unavailable",
-            gameName = "",
-            url = "",
-            localPath = "",
-            fileName = "",
-            totalBytes = 0L,
-            downloadedBytes = 0L,
-            phase = DownloadPhase.COMPLETED,
-            addedAt = 0L,
-        )
 
     fun pause(id: String) {
         update(id, DownloadPhase.PAUSED)
@@ -145,8 +134,12 @@ class DownloadRepository(
         onChanged?.invoke()
     }
 
+    /** Cancela e remove a task da lista e do armazenamento (como [delete]). */
     fun cancel(id: String) {
-        update(id, DownloadPhase.CANCELLED)
+        _tasks.value[id]?.let { task -> File(task.localPath).delete() }
+        _tasks.update { map -> map - id }
+        _lastPersist.remove(id)
+        appScope.launch(Dispatchers.IO) { dao.delete(id) }
     }
 
     fun delete(id: String) {
@@ -166,14 +159,16 @@ class DownloadRepository(
     }
 
     fun updateProgress(id: String, downloaded: Long, total: Long, speed: Long, force: Boolean) {
-        val now = SystemClock.elapsedRealtime()
-        val last = _lastPersist[id] ?: 0L
-        if (!force && now - last < 300L) return
-        _lastPersist[id] = now
+        // A UI acompanha o progresso em tempo real (engine emite a cada ~300 ms);
+        // a persistência no Room é mais espaçada para evitar escrita excessiva.
         _tasks.update { map ->
             val current = map[id] ?: return@update map
             map + (id to current.copy(downloadedBytes = downloaded, totalBytes = total, speedBytesPerSec = speed))
         }
+        val now = SystemClock.elapsedRealtime()
+        val last = _lastPersist[id] ?: 0L
+        if (!force && now - last < 1_000L) return
+        _lastPersist[id] = now
         persist(id)
     }
 
@@ -227,10 +222,11 @@ class DownloadRepository(
         }
 
     private fun fileNameFor(detail: GameDetail): String {
-        val base = detail.summary.name
+        // O slug é único e seguro para nomes de arquivo (validado no catálogo);
+        // usar name+version permitia colisão entre slugs diferentes.
+        val base = detail.summary.slug
             .trim()
             .replace(Regex("[^A-Za-z0-9._-]+"), "_")
-            .trim('_')
             .ifEmpty { "game" }
         return "$base-${detail.summary.version ?: "v1.0"}.apk"
     }

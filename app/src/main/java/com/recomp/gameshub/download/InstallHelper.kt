@@ -93,12 +93,17 @@ object InstallHelper {
         context.startActivity(intent)
     }
 
-    fun installPackage(context: Context, file: File) {
+    /**
+     * Instala o APK via PackageInstaller. O mapeamento slug → pacote é gravado
+     * apenas quando o instalador do sistema reporta [PackageInstaller.STATUS_SUCCESS]
+     * (via [InstallStatusReceiver]), evitando registrar como "instalado" um jogo
+     * cuja instalação o usuário cancelou.
+     */
+    fun installPackage(context: Context, file: File, slug: String? = null) {
         if (!canRequestInstalls(context)) {
             openInstallPermissionSettings(context)
             return
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
 
         CoroutineScope(Dispatchers.IO).launch {
             val installer = context.packageManager.packageInstaller
@@ -123,6 +128,10 @@ object InstallHelper {
                     }
                     val callback = Intent(context, InstallStatusReceiver::class.java).apply {
                         putExtra(InstallStatusReceiver.EXTRA_SESSION_ID, sessionId)
+                        slug?.takeIf { it.isNotBlank() }?.let {
+                            putExtra(InstallStatusReceiver.EXTRA_SLUG, it)
+                            putExtra(InstallStatusReceiver.EXTRA_INSTALL_PATH, file.absolutePath)
+                        }
                     }
                     val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0

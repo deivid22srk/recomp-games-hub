@@ -1,9 +1,5 @@
 package com.recomp.gameshub.presentation.catalog
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,10 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyGridItemScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
@@ -35,18 +29,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,13 +49,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.recomp.gameshub.core.designsystem.EmptyStateBox
 import com.recomp.gameshub.core.designsystem.ErrorStateBox
 import com.recomp.gameshub.core.designsystem.GameCoverImage
+import com.recomp.gameshub.core.designsystem.InfoBanner
 import com.recomp.gameshub.core.designsystem.RecompStatusBadge
 import com.recomp.gameshub.core.designsystem.ShimmerBox
-import com.recomp.gameshub.BuildConfig
 import com.recomp.gameshub.core.navigation.Routes
 import com.recomp.gameshub.core.navigation.RecompBottomBar
 import com.recomp.gameshub.core.designsystem.AppTopBar
 import com.recomp.gameshub.core.navigation.appViewModel
+import com.recomp.gameshub.core.util.CoverResolver
 import com.recomp.gameshub.domain.model.GameStatus
 import com.recomp.gameshub.domain.model.GameSummary
 import com.recomp.gameshub.presentation.details.GameDetailsScreen
@@ -78,15 +74,16 @@ fun CatalogRoute(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedSlug by viewModel.selectedSlug.collectAsStateWithLifecycle()
-    var searchOpen by remember { mutableStateOf(false) }
+    // rememberSaveable mantém a busca aberta ao girar a tela.
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
 
-    var displayedSlug by remember { mutableStateOf<String?>(null) }
+    var displayedSlug by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedSlug) {
-        if (selectedSlug != null) displayedSlug = selectedSlug
-    }
-    LaunchedEffect(selectedSlug) {
-        if (selectedSlug == null && displayedSlug != null) {
-            delay(280)
+        if (selectedSlug != null) {
+            displayedSlug = selectedSlug
+        } else if (displayedSlug != null) {
+            // Aguarda a animação de saída antes de remover o conteúdo da memória.
+            delay(300)
             if (selectedSlug == null) displayedSlug = null
         }
     }
@@ -122,6 +119,7 @@ fun CatalogRoute(
                     onFilterChange = viewModel::setFilter,
                     onOpenGame = viewModel::selectGame,
                     onOpenSearch = { searchOpen = true },
+                    onDismissError = viewModel::dismissError,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -129,10 +127,10 @@ fun CatalogRoute(
             }
 
             if (isShowingDetails || displayedSlug != null) {
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = isShowingDetails,
-                    enter = fadeIn(tween(320)),
-                    exit = fadeOut(tween(300)),
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320)),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300)),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     displayedSlug?.let { slug ->
@@ -154,75 +152,104 @@ private fun CatalogContent(
     onFilterChange: (GameStatus?) -> Unit,
     onOpenGame: (String) -> Unit,
     onOpenSearch: () -> Unit,
+    onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        CatalogHeader(onSearch = onOpenSearch)
+    // Pull-to-refresh disponível em toda a tela, inclusive nos estados
+    // vazio/erro — antes só o grid permitia atualizar.
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            CatalogHeader(onSearch = onOpenSearch)
 
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(12.dp))
 
-        FilterChipsRow(
-            selected = state.filter,
-            counts = state.counts,
-            onSelect = onFilterChange,
-        )
+            FilterChipsRow(
+                selected = state.filter,
+                counts = state.counts,
+                onSelect = onFilterChange,
+            )
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
-        when {
-            state.isLoading -> GameGridSkeleton()
-            state.games.isEmpty() && state.error != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ErrorStateBox(message = state.error, onRetry = onRefresh)
-                }
+            // Falha de refresh com lista já carregada: banner discreto e
+            // dispensável, sem esconder o catálogo.
+            if (state.error != null && state.games.isNotEmpty()) {
+                InfoBanner(
+                    message = state.error,
+                    isError = true,
+                    leadingIcon = null,
+                    onDismiss = onDismissError,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                Spacer(Modifier.height(8.dp))
             }
-            state.games.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EmptyStateBox(
-                        title = if (state.query.isNotBlank() || state.filter != null) {
-                            "Nenhum jogo encontrado"
-                        } else {
-                            "Catálogo vazio"
-                        },
-                        message = "Ajuste a busca/filtros ou puxe para atualizar o catálogo.",
-                        actionLabel = "Atualizar",
-                        onAction = onRefresh,
+
+            when {
+                state.isLoading -> GameGridSkeleton()
+                state.games.isEmpty() && state.error != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ErrorStateBox(message = state.error, onRetry = onRefresh)
+                    }
+                }
+                state.games.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyStateBox(
+                            title = if (state.query.isNotBlank() || state.filter != null) {
+                                "Nenhum jogo encontrado"
+                            } else {
+                                "Catálogo vazio"
+                            },
+                            message = "Ajuste a busca/filtros ou puxe para atualizar o catálogo.",
+                            actionLabel = "Atualizar",
+                            onAction = onRefresh,
+                        )
+                    }
+                }
+                else -> {
+                    GameGrid(
+                        games = state.games,
+                        onOpenGame = onOpenGame,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
-            else -> {
-                PullToRefreshBox(
-                    isRefreshing = state.isRefreshing,
-                    onRefresh = onRefresh,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 150.dp),
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = 4.dp,
-                                    bottom = 28.dp,
-                                ),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(20.dp),
-                            ) {
-                                items(state.games, key = { it.slug }) { game ->
-                                    GameCardItem(
-                                            game = game,
-                                            onClick = { onOpenGame(game.slug) },
-                                        )
-                                }
-                                }
-                            }
-                        }
+        }
+    }
+}
+
+@Composable
+private fun GameGrid(
+    games: List<GameSummary>,
+    onOpenGame: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 150.dp),
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 4.dp,
+            bottom = 28.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        items(games, key = { it.slug }) { game ->
+            GameCardItem(
+                game = game,
+                onClick = { onOpenGame(game.slug) },
+            )
         }
     }
 }
@@ -241,10 +268,10 @@ private fun GameCardItem(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick, role = Role.Button),
     ) {
         GameCoverImage(
-            url = resolveCatalogImage(game.slug, game.cover),
+            url = CoverResolver.resolve(game.slug, game.cover),
             contentDescription = game.name,
             modifier = coverModifier,
             shape = RoundedCornerShape(20.dp),
@@ -279,16 +306,6 @@ private fun GameCardItem(
             }
         }
     }
-}
-
-private fun resolveCatalogImage(slug: String, value: String?): String? {
-    if (value.isNullOrBlank()) return null
-    val githubBlob = Regex("https?://github\\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)").matchEntire(value)
-    if (githubBlob != null) {
-        return "https://raw.githubusercontent.com/${githubBlob.groupValues[1]}/${githubBlob.groupValues[2]}/${githubBlob.groupValues[3]}/${githubBlob.groupValues[4]}"
-    }
-    if (value.startsWith("http://") || value.startsWith("https://")) return value
-    return "https://raw.githubusercontent.com/${BuildConfig.DATA_OWNER}/${BuildConfig.DATA_REPO}/${BuildConfig.DATA_BRANCH}/games/$slug/$value"
 }
 
 @Composable
@@ -342,7 +359,7 @@ private fun GameSearchScreen(
     val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
     val error by viewModel.searchError.collectAsStateWithLifecycle()
-    var input by remember(query) { mutableStateOf(query) }
+    var input by rememberSaveable(query) { mutableStateOf(query) }
 
     Scaffold(
         topBar = { AppTopBar(title = "Pesquisar jogos", onBack = onClose) },
@@ -361,6 +378,12 @@ private fun GameSearchScreen(
                     label = { Text("Nome do jogo") },
                     placeholder = { Text("Ex.: Sonic, Mario, Zelda…") },
                     leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSearch = { viewModel.searchGames(input) },
+                    ),
                     trailingIcon = {
                         IconButton(
                             onClick = { viewModel.searchGames(input) },
@@ -486,16 +509,7 @@ private fun FilterChipsRow(
                 selected = selected == status,
                 onClick = { onSelect(status) },
                 label = {
-                    Text("$label")
-                },
-                leadingIcon = {
-                    if (status == null && count > 0) {
-                        Text(
-                            "$count",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(if (status == null && count > 0) "$label ($count)" else label)
                 },
             )
         }

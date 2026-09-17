@@ -54,7 +54,6 @@ import com.recomp.gameshub.data.repository.ThemeMode
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsRoute(
-    onBack: () -> Unit,
     onOpenCatalog: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenRepoEditor: () -> Unit,
@@ -70,7 +69,7 @@ fun SettingsRoute(
         topBar = {
             AppTopBar(
                 title = "Configurações",
-                onBack = onBack,
+                // Tela de aba da bottom bar: sem seta de voltar, igual ao Catálogo.
             )
         },
         bottomBar = {
@@ -214,7 +213,7 @@ fun SettingsRoute(
                     shape = MaterialTheme.shapes.large,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onOpenRepoEditor),
+                        .clickable(onClick = onOpenRepoEditor, role = androidx.compose.ui.semantics.Role.Button),
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -338,12 +337,15 @@ private fun LinkRow(
     ) {
         Row(
             modifier = Modifier
-                .clickable {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }
+                .clickable(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                    role = androidx.compose.ui.semantics.Role.Button,
+                )
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

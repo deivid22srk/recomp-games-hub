@@ -59,7 +59,7 @@ class GithubPublishApi(
             .addHeader("Accept", "application/vnd.github+json")
             .put(payload.toRequestBody(jsonMediaType))
             .build()
-        client.newCall(request).execute().use { response ->
+        client.newCall(request).await().use { response ->
             val body = response.body?.string() ?: ""
             if (!response.isSuccessful) {
                 throw IOException(
@@ -87,7 +87,7 @@ class GithubPublishApi(
             .addHeader("Accept", "application/vnd.github+json")
             .get()
             .build()
-        client.newCall(request).execute().use { response ->
+        client.newCall(request).await().use { response ->
             when {
                 response.code == 404 -> null
                 !response.isSuccessful -> throw IOException(
@@ -112,7 +112,7 @@ class GithubPublishApi(
                 .addHeader("Accept", "application/vnd.github+json")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException(
                         "Não foi possível acessar o repositório (HTTP ${response.code}). " +

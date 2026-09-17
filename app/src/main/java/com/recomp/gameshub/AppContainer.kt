@@ -34,6 +34,18 @@ class AppContainer(
     val networkClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        // Limite total por chamada das APIs de catálogo/releases: evita que uma
+        // conexão lenta que só goteja segure corrotinas por tempo indefinido.
+        .callTimeout(2, TimeUnit.MINUTES)
+        .build()
+
+    // Cliente dedicado ao download de APKs: SEM callTimeout — o corpo pode
+    // levar minutos/horas em conexões lentas e o limite global abortaria
+    // downloads legítimos no meio do stream. O readTimeout entre bytes é
+    // que detecta conexões mortas.
+    val downloadClient: OkHttpClient = networkClient.newBuilder()
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)
         .build()
 
     val repoApi = RepoApi(networkClient)
@@ -53,6 +65,6 @@ class AppContainer(
     val localRepoRepository = LocalRepoRepository(githubPublishApi, repoApi, localRepoDir)
     val catalogRepository = CatalogRepository(database.gameDao(), repoManager)
     val downloadRepository = DownloadRepository(database.downloadDao(), downloadsDir, appScope)
-    val downloadEngine = DownloadEngine(downloadRepository, networkClient)
+    val downloadEngine = DownloadEngine(downloadRepository, downloadClient)
     val installedGamesRepository = InstalledGamesRepository(database.installedGamesDao())
 }

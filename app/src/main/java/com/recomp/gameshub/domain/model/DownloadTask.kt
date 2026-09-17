@@ -36,10 +36,4 @@ data class DownloadTask(
     val isActive: Boolean get() = phase.isActive
 
     val remainingBytes: Long get() = (totalBytes - downloadedBytes).coerceAtLeast(0L)
-
-    fun withDelta(speed: Long, downloaded: Long, total: Long): DownloadTask = copy(
-        speedBytesPerSec = speed,
-        downloadedBytes = downloaded,
-        totalBytes = total,
-    )
 }

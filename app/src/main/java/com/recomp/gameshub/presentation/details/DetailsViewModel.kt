@@ -10,6 +10,7 @@ import com.recomp.gameshub.data.remote.GithubRelease
 import com.recomp.gameshub.data.remote.GithubReleaseApi
 import com.recomp.gameshub.data.repository.DownloadRepository
 import com.recomp.gameshub.data.repository.InstalledGamesRepository
+import com.recomp.gameshub.domain.model.DownloadPhase
 import com.recomp.gameshub.domain.model.DownloadTask
 import com.recomp.gameshub.domain.model.GameDetail
 import com.recomp.gameshub.domain.model.GameInstallState
@@ -118,8 +119,14 @@ class DetailsViewModel(
     fun startDownload(url: String? = null, sizeBytes: Long? = null) {
         uiState.value.detail?.let { detail ->
             val enriched = if (url == null) detail else detail.copy(downloadUrl = url)
-            downloadRepository.enqueue(enriched, sizeBytes)
-            DownloadService.start(context)
+            val task = downloadRepository.enqueue(enriched, sizeBytes)
+            // Só acorda o serviço para trabalho novo/em andamento; devolver uma
+            // task COMPLETED antiga não exige FGS.
+            if (task != null && (task.phase == DownloadPhase.PENDING ||
+                    task.phase == DownloadPhase.DOWNLOADING)
+            ) {
+                DownloadService.start(context)
+            }
         }
     }
 
@@ -149,21 +156,12 @@ class DetailsViewModel(
         val task = downloadTask.value ?: return
         val file = File(task.localPath)
         if (!file.exists()) return
-        viewModelScope.launch {
-            val identity = InstallHelper.readApkIdentity(context, file)
-            if (identity != null) {
-                installedGamesRepository.remember(
-                    slug = task.id,
-                    packageName = identity.packageName,
-                    versionName = identity.versionName,
-                    versionCode = identity.versionCode,
-                )
-            }
-            if (InstallHelper.canRequestInstalls(context)) {
-                InstallHelper.installPackage(context, file)
-            } else {
-                InstallHelper.openInstallPermissionSettings(context)
-            }
+        // O mapeamento slug→pacote é gravado pelo InstallStatusReceiver somente
+        // quando o instalador do sistema confirma sucesso (STATUS_SUCCESS).
+        if (InstallHelper.canRequestInstalls(context)) {
+            InstallHelper.installPackage(context, file, slug)
+        } else {
+            InstallHelper.openInstallPermissionSettings(context)
         }
     }
 

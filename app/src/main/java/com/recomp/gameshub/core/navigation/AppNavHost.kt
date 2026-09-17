@@ -7,11 +7,9 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.recomp.gameshub.presentation.catalog.CatalogRoute
 import com.recomp.gameshub.presentation.downloads.DownloadsRoute
@@ -26,22 +24,19 @@ fun AppNavHost() {
     val navController = rememberNavController()
 
     LaunchedEffect(Unit) {
-        delay(1600)
-        navController.navigate(Routes.Catalog) {
-            popUpTo(Routes.Splash) { inclusive = true }
+        delay(1400)
+        // Guarda evita empilhar um segundo Catalog quando a Activity é
+        // recriada (rotação/processo) e o Splash não está mais no topo.
+        if (navController.currentDestination?.route == Routes.Splash) {
+            navController.navigate(Routes.Catalog) {
+                popUpTo(Routes.Splash) { inclusive = true }
+                launchSingleTop = true
+            }
         }
     }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
-
     fun navigateTo(route: String) {
-        navController.navigate(route) {
-            launchSingleTop = true
-            restoreState = true
-            popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
-            }
-        }
+        navController.navigateToTab(route)
     }
 
     NavHost(
@@ -63,14 +58,12 @@ fun AppNavHost() {
         }
         composable(Routes.Downloads) {
             DownloadsRoute(
-                onBack = { navController.popBackStack() },
                 onOpenCatalog = { navigateTo(Routes.Catalog) },
                 onOpenSettings = { navigateTo(Routes.Settings) },
             )
         }
         composable(Routes.Settings) {
             SettingsRoute(
-                onBack = { navController.popBackStack() },
                 onOpenCatalog = { navigateTo(Routes.Catalog) },
                 onOpenDownloads = { navigateTo(Routes.Downloads) },
                 onOpenRepoEditor = { navigateTo(Routes.RepoEditor) },
@@ -84,6 +77,20 @@ fun AppNavHost() {
         }
         composable(Routes.Setup) {
             SetupRoute(onComplete = { navController.popBackStack() })
+        }
+    }
+}
+
+/**
+ * Navegação entre abas com comportamento de bottom bar: estado salvo/restaurado
+ * e pilha limitada ao destino inicial (Catalog), em vez de empilhar as abas.
+ */
+fun NavHostController.navigateToTab(route: String) {
+    navigate(route) {
+        launchSingleTop = true
+        restoreState = true
+        popUpTo(Routes.Catalog) {
+            saveState = true
         }
     }
 }

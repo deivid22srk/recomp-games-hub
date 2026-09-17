@@ -3,6 +3,7 @@ package com.recomp.gameshub.presentation.setup
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.recomp.gameshub.BuildConfig
+import com.recomp.gameshub.core.util.GitHubUrls
 import com.recomp.gameshub.data.repository.RepoManager
 import com.recomp.gameshub.data.repository.RepoRepository
 import com.recomp.gameshub.domain.model.RepoConfig
@@ -134,15 +135,8 @@ class SetupViewModel(
     companion object {
         /** Converte uma URL do GitHub em (owner, repo, branch). Suporta branches via URL. */
         fun parseGithubUrl(url: String): Triple<String, String, String>? {
-            val trimmed = url.trim().removeSuffix("/")
-                .replace(".git", "")
-            val match = Regex(
-                "https?://github\\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?"
-            ).matchEntire(trimmed) ?: return null
-            val owner = match.groupValues[1].takeIf { it.isNotBlank() } ?: return null
-            val repo = match.groupValues[2].takeIf { it.isNotBlank() } ?: return null
-            val branch = match.groupValues[3].takeIf { it.isNotBlank() } ?: BuildConfig.DATA_BRANCH
-            return Triple(owner, repo, branch)
+            val parsed = GitHubUrls.parseRepoUrl(url) ?: return null
+            return Triple(parsed.owner, parsed.repo, parsed.branch ?: BuildConfig.DATA_BRANCH)
         }
     }
 }

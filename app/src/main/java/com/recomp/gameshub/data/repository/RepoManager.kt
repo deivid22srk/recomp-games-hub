@@ -1,17 +1,20 @@
 package com.recomp.gameshub.data.repository
 
+import com.recomp.gameshub.core.util.GitHubUrls
 import com.recomp.gameshub.data.local.GameDao
 import com.recomp.gameshub.data.local.toEntity
 import com.recomp.gameshub.data.remote.RepoApi
 import com.recomp.gameshub.data.remote.RepoIndexDto
 import com.recomp.gameshub.domain.model.AppVersions
 import com.recomp.gameshub.domain.model.RepoConfig
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.IOException
 
 sealed interface RepoUpdateInfo {
     data class Available(
@@ -101,7 +104,7 @@ class RepoManager(
      * metadados de cada jogo) e os grava como um repositório local editável.
      * Útil para "continuar de um repositório" e depois editar os jogos.
      */
-suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Result<Int> =
+    suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Result<Int> =
         withContext(Dispatchers.IO) {
             runCatching {
                 if (!targetDir.exists()) targetDir.mkdirs()
@@ -125,9 +128,12 @@ suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Resul
                 )
 
                 index.forEach { entry ->
-                    runCatching { repoApi.fetchMetadata(config, entry.slug) }
+                    // O slug vem de um índice remoto de terceiros: validar antes de
+                    // usar em caminhos de arquivo (proteção contra path traversal).
+                    val slug = GitHubUrls.sanitizeSlug(entry.slug) ?: return@forEach
+                    runCatching { repoApi.fetchMetadata(config, slug) }
                         .onSuccess { meta ->
-                            val gameDir = File(gamesDir, entry.slug)
+                            val gameDir = File(gamesDir, slug)
                             if (!gameDir.exists()) gameDir.mkdirs()
                             File(gameDir, "metadata.json").writeText(json.encodeToString(meta))
                         }
@@ -157,10 +163,31 @@ suspend fun materializeRemoteToLocal(config: RepoConfig, targetDir: File): Resul
             gameDao.clear()
         } else {
             gameDao.upsertAll(index.map { it.toEntity(fetchedAt = 0L) })
-            gameDao.deleteWhereMissing(index.map { it.slug })
+            // Remove do banco os jogos que saíram do índice. A comparação é
+            // feita em memória: NOT IN com mais de ~999 slugs estoura o limite
+            // de bind arguments do SQLite.
+            val keep = index.map { it.slug }.toHashSet()
+            gameDao.getAllSlugs().filter { it !in keep }.forEach { gameDao.delete(it) }
+            var failures = 0
             index.forEach { entry ->
-                runCatching { repoApi.fetchMetadata(config, entry.slug) }
-                    .onSuccess { gameDao.upsert(it.toEntity(fetchedAt = now)) }
+                val slug = GitHubUrls.sanitizeSlug(entry.slug) ?: run {
+                    Log.w("RepoManager", "Slug inválido ignorado no índice: ${entry.slug}")
+                    return@forEach
+                }
+                val fetched = runCatching { repoApi.fetchMetadata(config, slug) }
+                fetched.fold(
+                    onSuccess = { gameDao.upsert(it.toEntity(fetchedAt = now)) },
+                    onFailure = { failures++ },
+                )
+            }
+            if (failures > 0) {
+                Log.w("RepoManager", "$failures de ${index.size} metadados não puderam ser carregados")
+                if (failures == index.size) {
+                    throw IOException(
+                        "Não foi possível carregar os dados de nenhum jogo " +
+                            "(${index.size} itens). Verifique sua conexão e tente novamente."
+                    )
+                }
             }
         }
     }

@@ -246,20 +246,13 @@ class RepoEditorViewModel(
 
     companion object {
         fun parseRepoUrl(url: String): RepoConfig? {
-            val trimmed = url.trim().removeSuffix("/").removeSuffix(".git")
-            if (trimmed.contains("?") || trimmed.contains("#")) return null
-            val match = Regex(
-                "https?://github\\.com/([^/]+)/([^/]+)(?:/tree/([^/]+))?"
-            ).matchEntire(trimmed) ?: return null
-            val owner = match.groupValues[1].takeIf { it.isNotBlank() } ?: return null
-            val repo = match.groupValues[2].takeIf { it.isNotBlank() } ?: return null
-            val branch = match.groupValues[3].takeIf { it.isNotBlank() }
-                ?: com.recomp.gameshub.BuildConfig.DATA_BRANCH
+            if (url.contains("?") || url.contains("#")) return null
+            val parsed = com.recomp.gameshub.core.util.GitHubUrls.parseRepoUrl(url) ?: return null
             return RepoConfig(
                 sourceType = RepoSourceType.GITHUB_URL,
-                owner = owner,
-                repo = repo,
-                branch = branch,
+                owner = parsed.owner,
+                repo = parsed.repo,
+                branch = parsed.branch ?: com.recomp.gameshub.BuildConfig.DATA_BRANCH,
             )
         }
     }
